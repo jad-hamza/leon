@@ -3,6 +3,7 @@
 package test
 
 import leon.annotation._
+import leon.io.{ FileOutputStream => FOS }
 
 object Print {
 
@@ -48,10 +49,10 @@ object Print {
   }
 
   def printX(x: Int): Unit = {
-    val out: leon.io.FileOutputStream = leon.io.FileOutputStream.open("test.txt")
-    if (leon.io.FileOutputStream.isOpen(out)) {
-      leon.io.FileOutputStream.write(out, x)
-      leon.io.FileOutputStream.close(out)
+    val out  = FOS.open("test.txt")
+    if (FOS.isOpen(out)) {
+      FOS.write(out, x)
+      FOS.close(out)
     } else {
       myprint("CANNOT PRINT ")
       myprint(x)
