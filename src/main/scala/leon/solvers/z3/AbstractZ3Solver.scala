@@ -5,7 +5,7 @@ package solvers.z3
 
 import com.microsoft.z3.{ Solver => _, _ }
 import com.microsoft.z3.enumerations.Z3_ast_kind
-import solvers.{Constructor => _, Model => _, _}
+import solvers.{Constructor => LeonConstructor, Model => _, _}
 import purescala.Common._
 import purescala.Definitions._
 import purescala.Constructors._
@@ -144,45 +144,27 @@ trait AbstractZ3Solver extends Solver {
     }
   }
 
-  sealed abstract class ADTSortReference
-  case class RecursiveType(index: Int) extends ADTSortReference
-  case class RegularSort(sort: Sort) extends ADTSortReference
+  def mkDatatypeSorts(defs: Seq[(TypeTree, DataType)]): Seq[(Sort, Seq[FuncDecl], Seq[FuncDecl], Seq[Seq[FuncDecl]])] = {
 
-  def mkDatatypeSorts(defs: Seq[(String, Seq[String], Seq[Seq[(String,ADTSortReference)]])]): 
-      Seq[(Sort, Seq[FuncDecl], Seq[FuncDecl], Seq[Seq[FuncDecl]])] = {
+    val (recTypes, dataTypes) = defs.unzip
 
-    val typeCount: Int = defs.size
+    val (symbolList, constructorList) = (for (dataType <- dataTypes) yield {
+      val sym: Symbol = z3.mkSymbol(dataType.sym.uniqueName)
 
-    // the following big block builds the following three lists
-    val (symbolList, constructorList) = (for((typeName, typeConstructorNames, typeConstructorArgs) <- defs) yield {
-      val constructorCount: Int = typeConstructorNames.size
-      if(constructorCount != typeConstructorArgs.size) {
-        throw new IllegalArgumentException(
-          "sequence of constructor names should have the same size as sequence of constructor param lists, for type " + typeName
-        )
-      }
+      val constructors = for (LeonConstructor(conId, _, conFields) <- dataType.cases) yield {
+        val constructorSym: Symbol = z3.mkSymbol(conId.uniqueName)
+        val testSym: Symbol = z3.mkSymbol("is" + conId.uniqueName)
+        val fieldSyms = conFields.map { case (fieldId, _) => 
+          z3.mkSymbol(fieldId.uniqueName): Symbol
+        }
+        val (fieldSorts, fieldRefs) = conFields.map { case (_, fieldType) =>
+          val index = recTypes.indexOf(rootType(fieldType))
+          if (index >= 0) (null, index) else {
+            (typeToSort(rootType(fieldType)), 0)
+          }
+        }.unzip
 
-      val sym: Symbol = z3.mkSymbol(typeName)
-
-      val constructors = for ((tcn, tca) <- typeConstructorNames zip typeConstructorArgs) yield {
-        val constructorSym: Symbol = z3.mkSymbol(tcn)
-        val testSym: Symbol = z3.mkSymbol("is" + tcn)
-        val fieldSyms: Array[Symbol] = tca.map(p => z3.mkSymbol(p._1)).toArray
-        val fieldSorts: Array[Sort] = tca.map(p => p._2 match {
-          case RecursiveType(idx) if idx >= typeCount =>
-            throw new IllegalArgumentException(
-              "index of recursive type is too big (" + idx + ") for field " + p._1 + " of type " + typeName
-            )
-          case RegularSort(srt) => srt
-          case RecursiveType(_) => null
-        }).toArray
-
-        val fieldRefs: Array[Int] = tca.map(p => p._2 match {
-          case RegularSort(_) => 0
-          case RecursiveType(idx) => idx
-        }).toArray
-
-        z3.mkConstructor(constructorSym, testSym, fieldSyms, fieldSorts, fieldRefs)
+        z3.mkConstructor(constructorSym, testSym, fieldSyms.toArray, fieldSorts.toArray, fieldRefs.toArray)
       }
 
       (sym, constructors.toArray)
@@ -209,27 +191,7 @@ trait AbstractZ3Solver extends Solver {
 
   def declareDatatypes(adts: Seq[(TypeTree, DataType)]): Unit = {
 
-    val indexMap: Map[TypeTree, Int] = adts.map(_._1).zipWithIndex.toMap
-
-    def typeToSortRef(tt: TypeTree): ADTSortReference = {
-      val tpe = rootType(tt)
-
-      if (indexMap contains tpe) {
-        RecursiveType(indexMap(tpe))
-      } else {
-        RegularSort(typeToSort(tt))
-      }
-    }
-
-    // Define stuff
-    val defs = for ((_, DataType(sym, cases)) <- adts) yield {(
-      sym.uniqueName,
-      cases.map(c => c.sym.uniqueName),
-      cases.map(c => c.fields.map{ case(id, tpe) => (id.uniqueName, typeToSortRef(tpe))})
-    )}
-
-    val resultingZ3Info = mkDatatypeSorts(defs)
-
+    val resultingZ3Info = mkDatatypeSorts(adts)
     for ((z3Inf, (tpe, DataType(sym, cases))) <- resultingZ3Info zip adts) {
       val (name, consFuns, testFuns, selFuns) = z3Inf
       sorts += (tpe -> name)
