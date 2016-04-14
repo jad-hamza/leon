@@ -48,7 +48,7 @@ trait VerificationSuite extends LeonRegressionSuite {
       val programs = {
         val (user, lib) = ast.units partition { _.isMainUnit }
         user map ( u => Program(u :: lib) )
-      }
+      }.reverse
       for ( p <- programs; options <- optionVariants) {
 
         val displayName = s"$cat/${p.units.head.id.name}.scala"
