@@ -257,7 +257,7 @@ trait AbstractZ3Solver extends Solver {
 
     case ft @ FunctionType(from, to) =>
       sorts.cached(ft) {
-        val symbol = z3.mkSymbol(ft.toString) // FIXME Is this right??? does it freshen?
+        val symbol = z3.mkSymbol(ft.toString)
         z3.mkUninterpretedSort(symbol)
       }
 
@@ -677,19 +677,25 @@ trait AbstractZ3Solver extends Solver {
                 }
 
               case ft @ FunctionType(fts, tt) =>
-                import scala.util.Try
+                val normalizedFt = normalizeType(ft).asInstanceOf[FunctionType]
+
                 (for {
-                  decl <- lambdas.getB(ft)
-                  interp <- Try(model.getFuncInterp(decl)).toOption
+                  decl <- lambdas.getB(normalizedFt)
+                  interp <- Option(model.getFuncInterp(decl))
                 } yield {
-                  val entries = interp.getEntries.toList.map { case entry =>
-                    val args = entry.getArgs.toList.zip(fts) map (rec _).tupled
-                    val value = rec(entry.getValue, tt)
-                    args.toList -> value
+                  // interp is the interpretation for ALL functions fts => tt
+                  val entries = interp.getEntries.toList.flatMap { entry =>
+                    val dispatcher :: args = entry.getArgs.toList
+                    (dispatcher == t).option {
+                      // Only keep entries for this particular lambda t
+                      val keys = args.zip(fts) map (rec _).tupled
+                      val value = rec(entry.getValue, tt)
+                      keys -> value
+                    }
                   }
                   val default = rec(interp.getElse, tt)
-                  FiniteLambda(entries, default, ft)
-                }).getOrElse(simplestValue(ft))
+                  FiniteLambda(entries, default, normalizedFt)
+                }).getOrElse(unsound(t, "Couldn't find function!"))
 
               case MapType(from, to) =>
                 val r @ RawArrayValue(`from`, rawElems, default) = rec(t, RawArrayType(from, library.optionType(to)))
@@ -731,13 +737,14 @@ trait AbstractZ3Solver extends Solver {
     rec(tree, normalizeType(tpe))
   }
 
-  protected[leon] def softFromZ3Formula(model: Model, tree: Expr, tpe: TypeTree) : Option[LeonExpr] = {
+  protected[leon] def softFromZ3Formula(model: Model, tree: Expr, tpe: TypeTree): Option[LeonExpr] = {
     try {
       Some(fromZ3Formula(model, tree, tpe))
     } catch {
       case e: Unsupported => None
       case e: UnsoundExtractionException => None
       case n: java.lang.NumberFormatException => None
+      case z: Z3Exception => None
     }
   }
 
