@@ -170,7 +170,7 @@ object SolverFactory {
   }
 
   lazy val hasNativeZ3 = try {
-    new com.microsoft.z3.Context()
+    ContextWrapper.mkContext(Map())
     true
   } catch {
     case _: java.lang.UnsatisfiedLinkError

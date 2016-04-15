@@ -104,7 +104,7 @@ trait AbstractZ3Solver extends Solver {
     if (!isInitialized) {
       val timer = context.timers.solvers.z3.init.start()
 
-      z3 = new Context(z3cfg)
+      z3 = ContextWrapper.mkContext(z3cfg)
 
       functions.clear()
       lambdas.clear()

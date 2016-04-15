@@ -112,7 +112,7 @@ class QuantifierSolverSuite extends LeonTestSuiteWithProgram {
           fail(s"Solver $solver - Constraint ${expr.asString} doesn't guarantee model validity!?")
         case Some(true) if sat => // checkmodels ensures validity
         case Some(false) if !sat => // we were looking for unsat
-        case res => fail(s"Solver $solver - Constraint ${expr.asString} has result $res!?")
+        case res => fail(s"Solver $solver - Constraint ${expr.asString} has result $res, should have sat=$sat!")
       }
     } finally {
       solver.free()

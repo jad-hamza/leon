@@ -35,7 +35,7 @@ object FunctionClosure extends TransformationPhase {
     val nestedWithPaths = (for((fds, path) <- nestedWithPathsFull; fd <- fds) yield (fd, path)).toMap
     val nestedFuns = nestedWithPaths.keys.toSeq
 
-    // Transitively called funcions from each function
+    // Transitively called functions from each function
     val callGraph: Map[FunDef, Set[FunDef]] = transitiveClosure(
       nestedFuns.map { f =>
         val calls = functionCallsOf(f.fullBody) collect {
