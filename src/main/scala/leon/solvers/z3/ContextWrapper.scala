@@ -53,9 +53,9 @@ object ContextWrapper {
   }
 
   private def addLibraryPath(pathToAdd: String): Unit = {
-    println(System.getProperty("java.library.path"))
+    //println(System.getProperty("java.library.path"))
     System.setProperty("java.library.path", pathToAdd + PS + System.getProperty("java.library.path"))
-    println(System.getProperty("java.library.path"))
+    //println(System.getProperty("java.library.path"))
 
     // this forces JVM to reload "java.library.path" property
     val fieldSysPath = classOf[ClassLoader].getDeclaredField("sys_paths")
@@ -67,16 +67,13 @@ object ContextWrapper {
     val path = "SCALAZ3_BIN"
     val libDir = new File(System.getProperty("java.io.tmpdir") + DS + path + LIB_BIN)
 
-    //System.mapLibraryName(LIB_NAME)
-    //System.mapLibraryName(LIBZ3_NAME)
-
     try {
       if (!libDir.isDirectory || !libDir.canRead) {
         libDir.mkdirs()
         extractFromJar(libDir)
       }
       addLibraryPath(libDir.getAbsolutePath)
-      //System.loadLibrary(LIBZ3_NAME)
+      //System.loadLibrary(LIBZ3_NAME) //FIXME windows somehow needs that?
       System.loadLibrary(LIB_NAME)
     } catch {
       case e: Throwable =>
