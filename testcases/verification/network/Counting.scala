@@ -47,7 +47,8 @@ object Protocol {
         case (id,Increment(),CCounter(i)) if (id == myId) =>
           
           update (CCounter(i+1))
-          !! (actor2,Deliver(i+1))
+          !! (actor2, Deliver(i+1))
+          !! (myId, Increment())
           
         case _ => update(BadState())
               
@@ -122,24 +123,31 @@ object ProtocolProof {
     
         val j = i+1
         val a1a2messages = net.messages.getOrElse((actor1,actor2),Nil())
+        val a1a1messages = net.messages.getOrElse((actor1,actor1),Nil())
         val newStates = net.states.updated(actor1, CCounter(j))
-        val newMessages = a1a2messages :+ Deliver(j)
-        val newMapMessages = net.messages.updated((actor1,actor2),newMessages)
+        val newa1a2messages = a1a2messages :+ Deliver(j)
+        val newa1a1messages = a1a1messages :+ Increment()
+        val newMapMessages = net.messages.updated((actor1,actor2), newa1a2messages)
+        val newnewMapMessages = newMapMessages.updated((actor1,actor1), newa1a1messages)
         val VCounter(k) = net getState(actor2)
         
         areDelivers(a1a2messages) && 
         appendDeliver(a1a2messages, j) &&
-        areDelivers(newMessages) &&
+        areIncrements(a1a1messages) && 
+        appendIncrement(a1a1messages) && 
+        areIncrements(newa1a1messages) && 
+        areDelivers(newa1a2messages) &&
         appendDeliver(a1a2messages, j) &&
         appendItself(a1a2messages, j) &&
-        j >= max(newMessages) &&
+        j >= max(newa1a2messages) &&
         k < j &&
         appendLarger(a1a2messages, j, k) &&
-        k < min(newMessages) &&
+        k < min(newa1a2messages) &&
         isSorted(a1a2messages) && 
         appendSorted(a1a2messages, j) && 
-        isSorted(newMessages) && 
-        networkInvariant(newStates, newMapMessages, net.getActor)
+        isSorted(newa1a2messages) && 
+        networkInvariant(newStates, newMapMessages, net.getActor) &&
+        networkInvariant(newStates, newnewMapMessages, net.getActor)
         
       case _ => false
     }
