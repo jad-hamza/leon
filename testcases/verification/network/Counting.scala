@@ -4,7 +4,7 @@ package distribution
 import FifoNetwork._
 import Networking._
 
-import leon.lang._
+import leon.lang.BooleanDecorations
 import leon.collection._
 import leon.proof._
 import leon.annotation._
@@ -45,7 +45,6 @@ object Protocol {
     
       (sender, m, state) match {
         case (id,Increment(),CCounter(i)) if (id == myId) =>
-          
           update (CCounter(i+1))
           !! (actor2, Deliver(i+1))
           !! (myId, Increment())
@@ -89,11 +88,13 @@ object ProtocolProof {
   import Protocol._
   
   // This is an invariant of the class VerifiedNetwork
-  def networkInvariant(states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: ActorId => Actor) = {
+  def networkInvariant(states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
     states.contains(actor1) && 
     states.contains(actor2) &&
     states(actor1) != BadState() &&
     states(actor2) != BadState() &&
+    getActor.contains(actor1) && 
+    getActor.contains(actor2) && 
     getActor(actor1) == CountingActor(actor1) &&
     getActor(actor2) == CheckingActor(actor2) && 
     !messages.contains((actor2,actor2)) &&
@@ -158,9 +159,9 @@ object ProtocolProof {
     sender == ActorId1() && 
     ((net getState(actor1), m, net getState(actor2)) match {
       case (CCounter(i), Deliver(j),VCounter(k)) =>
-        val messages = net.messages.getOrElse((actor1,actor2),Nil())
+        val a1a2messages = net.messages.getOrElse((actor1,actor2),Nil())
         i >= j && j > k &&
-          ( messages.isEmpty || j < min(messages) )
+          ( a1a2messages.isEmpty || j < min(a1a2messages) )
       case _ => false
     })
   }

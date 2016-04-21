@@ -14,7 +14,7 @@ object Networking {
   abstract class State
   
   
-  def makeNetwork(states: MMap[ActorId,State], getActor: ActorId => Actor) = {
+  def makeNetwork(states: MMap[ActorId,State], getActor: MMap[ActorId,Actor]) = {
     require(networkInvariant(states, MMap(), getActor))
     
     VerifiedNetwork(states, MMap(), getActor)

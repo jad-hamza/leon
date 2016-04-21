@@ -65,7 +65,7 @@ object PrettyPrinting {
     
     "\n\n" + statesToString(states) + "\n\n" + 
     messagesToString(messages) + "\n\n" + 
-    "getActor(1) = " + actorToString(getActor(actor1)) + "\n"
+    "getActor(1) = " + actorToString(getActor(actor1)) + "\n" +
     "getActor(2) = " + actorToString(getActor(actor2)) + "\n\n"
   }
   

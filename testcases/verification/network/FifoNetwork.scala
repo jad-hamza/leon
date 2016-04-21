@@ -13,7 +13,7 @@ object FifoNetwork  {
   case class VerifiedNetwork(
       var states: MMap[ActorId,State], 
       var messages: MMap[(ActorId,ActorId),List[Message]], 
-      getActor: ActorId => Actor)  {
+      getActor: MMap[ActorId,Actor])  {
     require(networkInvariant(states,messages,getActor))
         
     def send(sender: ActorId, receiver: ActorId, m: Message): Unit = {
