@@ -11,19 +11,20 @@ import Networking._
 object FifoNetwork  {
   
   case class VerifiedNetwork(
+      param: Parameter,
       var states: MMap[ActorId,State], 
       var messages: MMap[(ActorId,ActorId),List[Message]], 
       getActor: MMap[ActorId,Actor])  {
-    require(networkInvariant(states,messages,getActor))
+    require(networkInvariant(param, states, messages, getActor))
         
     def send(sender: ActorId, receiver: ActorId, m: Message): Unit = {
-      require(networkInvariant(states, messages.updated((sender,receiver), messages.getOrElse((sender,receiver),Nil()) :+ m),getActor))
+      require(networkInvariant(param, states, messages.updated((sender,receiver), messages.getOrElse((sender,receiver),Nil()) :+ m), getActor))
       
       messages = messages.updated((sender,receiver), messages.getOrElse((sender,receiver),Nil()) :+ m)
     } 
     
     def updateState(actor: ActorId, state: State): Unit = {
-      require(networkInvariant(states.updated(actor,state),messages,getActor))
+      require(networkInvariant(param, states.updated(actor,state),messages,getActor))
       
       states = states.updated(actor,state)
     } 
@@ -51,7 +52,7 @@ object FifoNetwork  {
           false
       }
       
-    } ensuring(_ => networkInvariant(states, messages, getActor))
+    } ensuring(_ => networkInvariant(param, states, messages, getActor))
   }
   
 }

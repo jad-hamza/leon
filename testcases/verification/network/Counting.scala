@@ -25,6 +25,9 @@ object Protocol {
   
   case class ActorId1() extends ActorId
   case class ActorId2() extends ActorId
+  
+  // this protocol does not need a parameter
+  case class NoParam() extends Parameter
     
   val actor1: ActorId = ActorId1()
   val actor2: ActorId = ActorId2()
@@ -52,7 +55,7 @@ object Protocol {
         case _ => update(BadState())
               
       }
-    } ensuring(_ => networkInvariant(net.states, net.messages, net.getActor))
+    } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
     
   }
   
@@ -72,7 +75,7 @@ object Protocol {
         case (ActorId1(), Deliver(j), VCounter(k)) if (j > k) => update (VCounter(j))
         case _ => update(BadState())
       }
-    }  ensuring(_ => networkInvariant(net.states, net.messages, net.getActor))
+    }  ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
     
     
   }
@@ -88,7 +91,7 @@ object ProtocolProof {
   import Protocol._
   
   // This is an invariant of the class VerifiedNetwork
-  def networkInvariant(states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
+  def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
     states.contains(actor1) && 
     states.contains(actor2) &&
     states(actor1) != BadState() &&
@@ -147,8 +150,8 @@ object ProtocolProof {
         isSorted(a1a2messages) && 
         appendSorted(a1a2messages, j) && 
         isSorted(newa1a2messages) && 
-        networkInvariant(newStates, newMapMessages, net.getActor) &&
-        networkInvariant(newStates, newnewMapMessages, net.getActor)
+        networkInvariant(net.param, newStates, newMapMessages, net.getActor) &&
+        networkInvariant(net.param, newStates, newnewMapMessages, net.getActor)
         
       case _ => false
     }

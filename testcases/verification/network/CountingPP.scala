@@ -61,7 +61,7 @@ object PrettyPrinting {
   }
   
   def networkToString(n: VerifiedNetwork): String = {
-    val VerifiedNetwork(states, messages, getActor) = n
+    val VerifiedNetwork(_, states, messages, getActor) = n
     
     "\n\n" + statesToString(states) + "\n\n" + 
     messagesToString(messages) + "\n\n" + 
