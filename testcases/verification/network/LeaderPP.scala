@@ -23,8 +23,8 @@ object PrettyPrinting {
     }
   }
   
-  def statesToString(m: MMap[ActorId,State]): String = {
-    require(mapDefined(n, m))
+  def statesToString(n: BigInt, m: MMap[ActorId,State]): String = {
+    require(checkProperty(n, (i: BigInt) => m.contains(UID(i))))
   
     def loop(i: BigInt) : String = {
       if (i == n) ""
@@ -50,12 +50,12 @@ object PrettyPrinting {
   }
   
   
-  def messagesToString(m: MMap[(ActorId,ActorId), List[Message]]): String = {
+  def messagesToString(n: BigInt, m: MMap[(ActorId,ActorId), List[Message]]): String = {
   
     def loop(i: BigInt) : String = {
       if (i == n) ""
       else  
-        actorIdToString(UID(i)) + "," + actorIdToString(UID((i+1)%n)) + ": " + messageListToString(m.getOrElse((UID(i),UID((i+1)%n)), Nil())) + "\n" + loop(i+1)
+        actorIdToString(UID(i)) + "," + actorIdToString(UID(increment(i,n))) + ": " + messageListToString(m.getOrElse((UID(i),UID(increment(i,n))), Nil())) + "\n" + loop(i+1)
     }
     
     loop(0)
@@ -67,7 +67,8 @@ object PrettyPrinting {
     }
   }
   
-  def getActorToString(getActor: MMap[ActorId,Actor]) = {
+  def getActorToString(n: BigInt, getActor: MMap[ActorId,Actor]) = {
+    
     
     def loop(i: BigInt) : String = {
       if (i == n) ""
@@ -78,12 +79,13 @@ object PrettyPrinting {
     loop(0)
   }
   
-  def networkToString(n: VerifiedNetwork): String = {
-    val VerifiedNetwork(states, messages, getActor) = n
+  def networkToString(net: VerifiedNetwork): String = {
+    val VerifiedNetwork(Size(n), states, messages, getActor) = net
     
-    "\n\n" + statesToString(states) + "\n\n" + 
-    messagesToString(messages) + "\n\n" + 
-    getActorToString(getActor) + "\n"
+    "\n\nNumber of processes: " + n.toString + "\n\n" +
+    statesToString(n, states) + "\n\n" + 
+    messagesToString(n, messages) + "\n\n" + 
+    getActorToString(n, getActor) + "\n"
   }
   
 }
