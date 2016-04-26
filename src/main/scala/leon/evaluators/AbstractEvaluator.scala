@@ -57,6 +57,8 @@ class AbstractEvaluator(ctx: LeonContext, prog: Program) extends ContextualEvalu
   override val description: String = "Evaluates string programs but keeps the formula which generated the value"
   override val name: String = "Abstract evaluator"
  
+  /** True if CaseClassSelector(...CaseClass(...))  have to be simplified. */
+  var evaluateCaseClassSelector = true
   
   protected def e(expr: Expr)(implicit rctx: RC, gctx: GC): (Expr, Expr) = {
     implicit def aToC: AbstractEvaluator.this.underlying.RC = DefaultRecContext(rctx.mappings)
@@ -88,11 +90,9 @@ class AbstractEvaluator(ctx: LeonContext, prog: Program) extends ContextualEvalu
       
     case MatchExpr(scrut, cases) =>
       val (escrut, tscrut) = e(scrut)
-      cases.toStream.map(c => underlying.matchesCase(escrut, c)).find(_.nonEmpty) match {
-        case Some(Some((c, mappings))) =>
-          e(c.rhs)(rctx.withNewVars(mappings), gctx)
-        case _ =>
-          throw RuntimeError("MatchError(Abstract evaluation): "+escrut.asString+" did not match any of the cases :\n" + cases.mkString("\n"))
+      cases.toStream.map(c => matchesCaseAbstract(escrut, tscrut, c)).find(_.nonEmpty) match {
+        case Some(Some((c, mappings))) => e(c.rhs)(rctx.withNewVars2(mappings), gctx)
+        case _ => throw RuntimeError("MatchError(Abstract evaluation): "+escrut.asString+" did not match any of the cases :\n" + cases.mkString("\n"))
       }
 
     case FunctionInvocation(tfd, args) =>
@@ -105,7 +105,7 @@ class AbstractEvaluator(ctx: LeonContext, prog: Program) extends ContextualEvalu
       val evArgsOrigin = evArgs.map(_._2)
       
       // build a mapping for the function...
-      val frame = rctx.withNewVars(tfd.paramSubst(evArgsValues))
+      val frame = rctx.withNewVars2((tfd.paramIds zip evArgs).toMap)
   
       val callResult = if ((evArgsValues forall ExprOps.isValue) && tfd.fd.annotations("extern") && ctx.classDir.isDefined) {
         (scalaEv.call(tfd, evArgsValues), functionInvocation(tfd.fd, evArgsOrigin))
@@ -122,18 +122,126 @@ class AbstractEvaluator(ctx: LeonContext, prog: Program) extends ContextualEvalu
         }
       }
       callResult
+
     case Let(i, ex, b) =>
       val (first, second) = e(ex)
       e(b)(rctx.withNewVar(i, (first, second)), gctx)
+
+    case Application(caller, args) =>
+      val (ecaller, tcaller) = e(caller)
+      val nargs = args map e
+      val (eargs, targs) = nargs.unzip
+      val abs_value = Application(tcaller, targs)
+      if (ExprOps.isValue(ecaller) && (eargs forall ExprOps.isValue)) {
+        (underlying.e(Application(ecaller, eargs)), abs_value)
+      } else ecaller match {
+        case l @ Lambda(params, body) =>
+          val mapping = (params map (_.id) zip nargs).toMap
+          e(body)(rctx.withNewVars2(mapping), gctx)
+        case _ =>
+          (Application(ecaller, eargs), abs_value)
+      }
+
     case Operator(es, builder) =>
       val (ees, ts) = es.map(e).unzip
       if(ees forall ExprOps.isValue) {
-        (underlying.e(builder(ees)), builder(ts))
+        val conc_value = underlying.e(builder(ees))
+        val abs_value = builder(ts)
+        (conc_value, abs_value)
       } else {
         (builder(ees), builder(ts))
       }
     }
   }
 
+  def matchesCaseAbstract(scrut: Expr, abstractScrut: Expr, caze: MatchCase)(implicit rctx: RC, gctx: GC): Option[(MatchCase, Map[Identifier, (Expr, Expr)])] = {
+    import purescala.TypeOps.isSubtypeOf
+    import purescala.Extractors._
 
+    def matchesPattern(pat: Pattern, expr: Expr, exprFromScrut: Expr): Option[Map[Identifier, (Expr, Expr)]] = (pat, expr) match {
+      case (InstanceOfPattern(ob, pct), e) =>
+        if (isSubtypeOf(e.getType, pct)) {
+          Some(obind(ob, e, AsInstanceOf(exprFromScrut, pct)))
+        } else {
+          None
+        }
+      case (WildcardPattern(ob), e) =>
+        Some(obind(ob, e, exprFromScrut))
+
+      case (CaseClassPattern(ob, pct, subs), CaseClass(ct, args)) =>
+        if (pct == ct) {
+          val res = (subs zip args zip ct.classDef.fieldsIds).map{
+            case ((s, a), id) =>
+              exprFromScrut match {
+                case CaseClass(ct, args) if evaluateCaseClassSelector =>
+                  matchesPattern(s, a, args(ct.classDef.selectorID2Index(id)))
+                case _ =>
+                  matchesPattern(s, a, CaseClassSelector(ct, exprFromScrut, id))
+              }
+          }
+          if (res.forall(_.isDefined)) {
+            Some(obind(ob, expr, exprFromScrut) ++ res.flatten.flatten)
+          } else {
+            None
+          }
+        } else {
+          None
+        }
+      case (up @ UnapplyPattern(ob, _, subs), scrut) =>
+        e(functionInvocation(up.unapplyFun.fd, Seq(scrut))) match {
+          case (CaseClass(CaseClassType(cd, _), Seq()), eBuilt) if cd == program.library.None.get =>
+            None
+          case (CaseClass(CaseClassType(cd, _), Seq(arg)), eBuilt) if cd == program.library.Some.get =>
+            val res = (subs zip unwrapTuple(arg, subs.size)).zipWithIndex map {
+              case ((s, a), i) => matchesPattern(s, a, tupleSelect(eBuilt, i + 1, subs.size))
+            }
+            if (res.forall(_.isDefined)) {
+              Some(obind(ob, expr, eBuilt) ++ res.flatten.flatten)
+            } else {
+              None
+            }
+          case other =>
+            throw EvalError(typeErrorMsg(other._1, up.unapplyFun.returnType))
+        }
+      case (TuplePattern(ob, subs), Tuple(args)) =>
+        if (subs.size == args.size) {
+          val res = (subs zip args).zipWithIndex.map{
+            case ((s, a), i) =>
+              exprFromScrut match {
+                case TupleSelect(Tuple(args), i) if evaluateCaseClassSelector=>
+                  matchesPattern(s, a, args(i - 1))
+                case _ =>
+                  matchesPattern(s, a, TupleSelect(exprFromScrut, i + 1))
+              }
+          }
+          if (res.forall(_.isDefined)) {
+            Some(obind(ob, expr, exprFromScrut) ++ res.flatten.flatten)
+          } else {
+            None
+          }
+        } else {
+          None
+        }
+      case (LiteralPattern(ob, l1) , l2 : Literal[_]) if l1 == l2 =>
+        Some(obind(ob, l1, exprFromScrut))
+      case _ => None
+    }
+
+    def obind(ob: Option[Identifier], e: Expr, eBuilder: Expr): Map[Identifier, (Expr, Expr)] = {
+      Map[Identifier, (Expr, Expr)]() ++ ob.map(id => id -> ((e, eBuilder)))
+    }
+
+    caze match {
+      case SimpleCase(p, rhs) =>
+        matchesPattern(p, scrut, abstractScrut).map(r =>
+          (caze, r)
+        )
+
+      case GuardedCase(p, g, rhs) =>
+        for {
+          r <- matchesPattern(p, scrut, abstractScrut)
+          if e(g)(rctx.withNewVars2(r), gctx)._1 == BooleanLiteral(true)
+        } yield (caze, r)
+    }
+  }
 }

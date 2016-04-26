@@ -82,4 +82,10 @@ package object lang {
       }
     }
   }
+
+  @extern
+  def print(x: String): Unit = {
+    scala.Predef.print(x)
+  }
+
 }
