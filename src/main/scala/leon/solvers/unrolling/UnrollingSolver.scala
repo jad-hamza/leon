@@ -30,6 +30,7 @@ trait UnrollingProcedure extends LeonComponent {
   val optUseCodeGen    = LeonFlagOptionDef("codegen",       "Use compiled evaluator instead of interpreter", false)
   val optAssumePre     = LeonFlagOptionDef("assumepre",     "Assume precondition holds (pre && f(x) = body) when unfolding", false)
   val optPartialModels = LeonFlagOptionDef("partialmodels", "Extract domains for quantifiers and bounded first-class functions", false)
+  val optSilentErrors  = LeonFlagOptionDef("silenterrors",  "Fail silently into UNKNOWN when encountering an error", false)
 
   override val definedOptions: Set[LeonOptionDef[Any]] =
     Set(optCheckModels, optFeelingLucky, optUseCodeGen, optUnrollCores, optAssumePre, optUnrollFactor, optPartialModels)
@@ -49,6 +50,7 @@ trait AbstractUnrollingSolver[T]
   val unrollUnsatCores = context.findOptionOrDefault(optUnrollCores)
   val assumePreHolds   = context.findOptionOrDefault(optAssumePre)
   val partialModels    = context.findOptionOrDefault(optPartialModels)
+  val silentErrors     = context.findOptionOrDefault(optSilentErrors)
 
   protected var foundDefinitiveAnswer = false
   protected var definitiveAnswer : Option[Boolean] = None
@@ -210,7 +212,11 @@ trait AbstractUnrollingSolver[T]
   private def validateModel(model: Model, assumptions: Seq[Expr], silenceErrors: Boolean): Boolean = {
     val expr = andJoin(assumptions ++ constraints)
 
-    evaluator.eval(expr, model) match {
+    val newExpr = model.toSeq.foldLeft(expr){
+      case (e, (k, v)) => let(k, v, e)
+    }
+    
+    evaluator.eval(newExpr) match {
       case EvaluationResults.Successful(BooleanLiteral(true)) =>
         reporter.debug("- Model validated.")
         true
@@ -321,10 +327,12 @@ trait AbstractUnrollingSolver[T]
                   quantify = true
                 }
               } else {
-                val valid = !checkModels || validateModel(model, assumptionsSeq, silenceErrors = false)
+                val valid = !checkModels || validateModel(model, assumptionsSeq, silenceErrors = silentErrors)
 
                 if (valid) {
                   foundAnswer(Some(true), model)
+                } else if (silentErrors) {
+                  foundAnswer(None, model)
                 } else {
                   reporter.error(
                     "Something went wrong. The model should have been valid, yet we got this: " +
@@ -433,7 +441,9 @@ trait AbstractUnrollingSolver[T]
 
           reporter.debug(" - more unrollings")
 
+          val timer = context.timers.solvers.unroll.start()
           val newClauses = unrollingBank.unrollBehind(toRelease)
+          timer.stop()
 
           for (ncl <- newClauses) {
             solverAssert(ncl)

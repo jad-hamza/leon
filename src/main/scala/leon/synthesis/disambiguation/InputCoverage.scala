@@ -27,6 +27,8 @@ import leon.verification.VCStatus
 import leon.verification.VCResult
 import leon.evaluators.AbstractEvaluator
 
+case class InputNotCoveredException(msg: String, lineExpr: Identifier) extends Exception(msg)
+
 /**
  * @author Mikael
  * If possible, synthesizes a set of inputs for the function so that they cover all parts of the function.
@@ -43,10 +45,10 @@ class InputCoverage(fd: FunDef, fds: Set[FunDef])(implicit c: LeonContext, p: Pr
       Else it creates a new boolean indicating this branch. */
   def wrapBranch(e: (Expr, Option[Seq[Identifier]])): (Expr, Some[Seq[Identifier]]) = e._2 match {
     case None =>
-      val b = FreshIdentifier("l" + Math.abs(e._1.getPos.line) + "c" + Math.abs(e._1.getPos.col), BooleanType)
+      val b = FreshIdentifier("l" + Math.abs(e._1.getPos.line) + "c" + Math.abs(e._1.getPos.col), BooleanType).copiedFrom(e._1)
       (tupleWrap(Seq(e._1, Variable(b))), Some(Seq(b)))
     case Some(Seq()) =>
-      val b = FreshIdentifier("l" + Math.abs(e._1.getPos.line) + "c" + Math.abs(e._1.getPos.col), BooleanType)
+      val b = FreshIdentifier("l" + Math.abs(e._1.getPos.line) + "c" + Math.abs(e._1.getPos.col), BooleanType).copiedFrom(e._1)
       
       def putInLastBody(e: Expr): Expr = e match {
         case Tuple(Seq(v, prev_b)) => Tuple(Seq(v, or(prev_b, b.toVariable))).copiedFrom(e)
@@ -96,13 +98,30 @@ class InputCoverage(fd: FunDef, fds: Set[FunDef])(implicit c: LeonContext, p: Pr
           val arg_b = FreshIdentifier("bc", BooleanType)
           (letTuple(Seq(arg_id, arg_b), c1, IfExpr(Variable(arg_id), t1, e1).copiedFrom(e)).copiedFrom(e), merge(merge(cv1, tv1), ev1))
       }
-    case MatchExpr(scrut, cases) =>
-      val (c1, cv1) = markBranches(scrut)
-      val (new_cases, variables) = (cases map { case m@MatchCase(pattern, opt, rhs) =>
-        val (rhs_new, ids) = wrapBranch(markBranches(rhs))
-        (MatchCase(pattern, opt, rhs_new).copiedFrom(m), ids)
-      }).unzip // TODO: Check for unapply with function pattern ?
-      (MatchExpr(c1, new_cases).copiedFrom(e), variables.fold(None)(merge))
+    case m@MatchExpr(scrut, cases) =>
+      val (c, ids) = markBranches(ExprOps.matchToIfThenElse(m)) // And replace the last error else statement with a dummy flag.
+      def replaceFinalElse(e: Expr): (Expr, Identifier)= e match {
+        case IfExpr(c1, t1, e1) =>
+          val (newElse, id) = replaceFinalElse(e1)
+          (IfExpr(c1, t1, newElse).copiedFrom(e), id)
+        case Tuple(Seq(Error(tpe, msg), Variable(i))) =>
+          (Tuple(Seq(Error(tpe, msg), BooleanLiteral(false))), i)
+      }
+      val (new_c, id_to_remove) = replaceFinalElse(c)
+      (new_c, ids.map(_.filter(_ != id_to_remove)))
+    case Or(args) if args.length >= 1 =>
+      val c = args.foldRight[Expr](BooleanLiteral(false).copiedFrom(e)){
+        case (arg, prev) =>
+          IfExpr(arg, BooleanLiteral(true), prev).copiedFrom(e)
+      }
+      markBranches(c.copiedFrom(e))
+    case And(args) if args.length >= 1  =>
+      val c = args.foldRight[Expr](BooleanLiteral(true).copiedFrom(e)){
+        case (arg, prev) =>
+          IfExpr(Not(arg), BooleanLiteral(false), prev).copiedFrom(e)
+      }
+      markBranches(c.copiedFrom(e))
+      
     case Operator(lhsrhs, builder) =>
       // The exprBuilder adds variable definitions needed to compute the arguments.
       val (exprBuilder, children, tmpIds, ids) = (((e: Expr) => e, ListBuffer[Expr](), ListBuffer[Identifier](), None: Option[Seq[Identifier]]) /: lhsrhs) {
@@ -244,7 +263,7 @@ class InputCoverage(fd: FunDef, fds: Set[FunDef])(implicit c: LeonContext, p: Pr
           } else None
       })
       val start_fd2 = fdMap2.getOrElse(start_fd, start_fd)
-      val tfactory = SolverFactory.getFromSettings(c, program2).withTimeout(5.seconds)
+      val tfactory = SolverFactory.getFromSettings(c, program2).withTimeout(10.seconds)
       
       val vctx = new VerificationContext(c, program2, tfactory)
       val vcs = VerificationPhase.generateVCs(vctx, Seq(start_fd2))
@@ -262,7 +281,8 @@ class InputCoverage(fd: FunDef, fds: Set[FunDef])(implicit c: LeonContext, p: Pr
               Set(bvar)
           }
           finalExprs -> coveredBooleansForCE
-        case _ => Seq() -> Set(bvar)
+        case e =>
+          throw InputNotCoveredException("Could not find an input to cover the line: " + bvar.getPos.line + " (at col " + bvar.getPos.col + ")\n" + e.getOrElse(""), bvar)
       }
     }
     

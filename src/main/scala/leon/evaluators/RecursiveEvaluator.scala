@@ -22,7 +22,7 @@ import org.apache.commons.lang3.StringEscapeUtils
 
 abstract class RecursiveEvaluator(ctx: LeonContext, prog: Program, maxSteps: Int)
   extends ContextualEvaluator(ctx, prog, maxSteps)
-  with DeterministicEvaluator {
+     with DeterministicEvaluator {
 
   val name = "evaluator"
   val description = "Recursive interpreter for PureScala expressions"
@@ -39,8 +39,6 @@ abstract class RecursiveEvaluator(ctx: LeonContext, prog: Program, maxSteps: Int
   protected[evaluators] def e(expr: Expr)(implicit rctx: RC, gctx: GC): Expr = expr match {
     case Variable(id) =>
       rctx.mappings.get(id) match {
-        case Some(v) if v != expr =>
-          e(v)
         case Some(v) =>
           v
         case None =>
@@ -76,7 +74,7 @@ abstract class RecursiveEvaluator(ctx: LeonContext, prog: Program, maxSteps: Int
     case Assert(cond, oerr, body) =>
       e(IfExpr(Not(cond), Error(expr.getType, oerr.getOrElse("Assertion failed @"+expr.getPos)), body))
 
-    case en@Ensuring(body, post) =>
+    case en @ Ensuring(body, post) =>
       e(en.toAssert)
 
     case Error(tpe, desc) =>
@@ -212,11 +210,15 @@ abstract class RecursiveEvaluator(ctx: LeonContext, prog: Program, maxSteps: Int
 
     case CaseClass(cct, args) =>
       val cc = CaseClass(cct, args.map(e))
-      if (cct.classDef.hasInvariant) {
+      val check = Evaluator.invariantCheck(cc)
+      if (check.isFailure) {
+        throw RuntimeError("ADT invariant violation for " + cct.classDef.id.asString + " reached in evaluation.: " + cct.invariant.get.asString)
+      } else if (check.isRequired) {
         e(FunctionInvocation(cct.invariant.get, Seq(cc))) match {
-          case BooleanLiteral(true) =>
-          case BooleanLiteral(false) =>
-            throw RuntimeError("ADT invariant violation for " + cct.classDef.id.asString + " reached in evaluation.: " + cct.invariant.get.asString)
+          case BooleanLiteral(success) =>
+            Evaluator.invariantResult(cc, success)
+            if (!success)
+              throw RuntimeError("ADT invariant violation for " + cct.classDef.id.asString + " reached in evaluation.: " + cct.invariant.get.asString)
           case other =>
             throw RuntimeError(typeErrorMsg(other, BooleanType))
         }
@@ -586,14 +588,7 @@ abstract class RecursiveEvaluator(ctx: LeonContext, prog: Program, maxSteps: Int
 
     case l @ Lambda(_, _) =>
       val mapping = variablesOf(l).map(id => id -> e(Variable(id))).toMap
-      val newLambda = replaceFromIDs(mapping, l).asInstanceOf[Lambda]
-      val (normalized, _) = normalizeStructure(matchToIfThenElse(newLambda))
-      val nl = normalized.asInstanceOf[Lambda]
-      if (!gctx.lambdas.isDefinedAt(nl)) {
-        val (norm, _) = normalizeStructure(matchToIfThenElse(l))
-        gctx.lambdas += (nl -> norm.asInstanceOf[Lambda])
-      }
-      nl
+      replaceFromIDs(mapping, l).asInstanceOf[Lambda]
 
     case FiniteLambda(mapping, dflt, tpe) =>
       FiniteLambda(mapping.map(p => p._1.map(e) -> e(p._2)), e(dflt), tpe)
@@ -610,11 +605,15 @@ abstract class RecursiveEvaluator(ctx: LeonContext, prog: Program, maxSteps: Int
       frlCache.getOrElse((f, context), {
         val tStart = System.currentTimeMillis
 
-        val newCtx = ctx.copy(options = ctx.options.map {
-          case LeonOption(optDef, value) if optDef == UnrollingProcedure.optFeelingLucky =>
-            LeonOption(optDef)(false)
-          case opt => opt
-        })
+        val newOptions = Seq(
+          LeonOption(UnrollingProcedure.optFeelingLucky)(false),
+          LeonOption(UnrollingProcedure.optSilentErrors)(true),
+          LeonOption(UnrollingProcedure.optCheckModels)(true)
+        )
+
+        val newCtx = ctx.copy(options = ctx.options.filterNot { opt =>
+          newOptions.exists(no => opt.optionDef == no.optionDef)
+        } ++ newOptions)
 
         val solverf = SolverFactory.getFromSettings(newCtx, program).withTimeout(1.second)
         val solver  = solverf.getNewSolver()
@@ -630,12 +629,7 @@ abstract class RecursiveEvaluator(ctx: LeonContext, prog: Program, maxSteps: Int
 
               val domainCnstr = orJoin(quorums.map { quorum =>
                 val quantifierDomains = quorum.flatMap { case (path, caller, args) =>
-                  val matcher = e(caller) match {
-                    case l: Lambda => gctx.lambdas.getOrElse(l, l)
-                    case ev => ev
-                  }
-
-                  val domain = pm.domains.get(matcher)
+                  val domain = pm.domains.get(e(caller))
                   args.zipWithIndex.flatMap {
                     case (Variable(id),idx) if quantifiers(id) =>
                       Some(id -> domain.map(cargs => path -> cargs(idx)))

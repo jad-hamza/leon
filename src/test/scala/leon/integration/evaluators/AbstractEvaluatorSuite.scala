@@ -65,7 +65,7 @@ object AbstractTests {
     }
   }
   
-  ignore("Abstract evaluator should correctly handle boolean and recursive") { implicit fix =>
+  test("Abstract evaluator should correctly handle boolean and recursive") { implicit fix =>
     val testFd = funDef("AbstractTests.test2")
     val Leaf = cc("AbstractTests.Leaf")()
     def Node(left: Expr, n: Expr, right: Expr) = cc("AbstractTests.Node")(left, n, right)
@@ -73,6 +73,7 @@ object AbstractTests {
     val NodeType = classType("AbstractTests.Node", Seq()).asInstanceOf[CaseClassType]
     
     val ae = new AbstractEvaluator(fix._1, fix._2)
+    ae.evaluateCaseClassSelector = false
     
     val input = Node(Leaf, IntLiteral(5), Leaf)
     
