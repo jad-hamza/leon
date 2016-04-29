@@ -1,11 +1,14 @@
 package distribution
 
 import leon.collection._
+import leon.proof._
+
 
 import Protocol._
 import ProtocolProof._
 import Networking._
 import FifoNetwork._
+
 
 object PrettyPrinting {
   
@@ -24,12 +27,14 @@ object PrettyPrinting {
   }
   
   def statesToString(n: BigInt, m: MMap[ActorId,State]): String = {
-    require(checkProperty(n, (i: BigInt) => m.contains(UID(i))))
+    require(n > 0 && checkProperty(n, (i: BigInt) => m.contains(UID(i))))
   
     def loop(i: BigInt) : String = {
       if (i == n) ""
-      else  
+      else  if (m.contains(UID(i)))
         actorIdToString(UID(i)) + " -> " + stateToString(m(UID(i))) + "\n" + loop(i+1)
+      else
+        actorIdToString(UID(i)) + " -> Nothing\n" + loop(i+1)
     }
     
     loop(0)
@@ -51,8 +56,10 @@ object PrettyPrinting {
   
   
   def messagesToString(n: BigInt, m: MMap[(ActorId,ActorId), List[Message]]): String = {
+    require(n > 0)
   
     def loop(i: BigInt) : String = {
+      require(0 <= i && i <= n)
       if (i == n) ""
       else  
         actorIdToString(UID(i)) + "," + actorIdToString(UID(increment(i,n))) + ": " + messageListToString(m.getOrElse((UID(i),UID(increment(i,n))), Nil())) + "\n" + loop(i+1)
@@ -68,21 +75,26 @@ object PrettyPrinting {
   }
   
   def getActorToString(n: BigInt, getActor: MMap[ActorId,Actor]) = {
-    
+    require(n > 0 && checkProperty(n, (i: BigInt) => getActor.contains(UID(i))))
     
     def loop(i: BigInt) : String = {
+      require(0 <= i && i <= n)
       if (i == n) ""
-      else  
+      else if (getActor.contains(UID(i))) {
         "getActor(" + i + ") = " + actorToString(getActor(UID(i))) + "\n" + loop(i+1)
+      } else {
+        "getActor(" + i + ") = Nothing\n" + loop(i+1)
+      }
     }
   
     loop(0)
   }
   
   def networkToString(net: VerifiedNetwork): String = {
-    val VerifiedNetwork(Size(n), states, messages, getActor) = net
+    val VerifiedNetwork(Params(n, starterProcess), states, messages, getActor) = net
     
-    "\n\nNumber of processes: " + n.toString + "\n\n" +
+    "\n\nNumber of processes: " + n.toString + "\n" +
+    "Starting Process: " + starterProcess + "\n\n" +
     statesToString(n, states) + "\n\n" + 
     messagesToString(n, messages) + "\n\n" + 
     getActorToString(n, getActor) + "\n"
