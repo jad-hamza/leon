@@ -48,30 +48,30 @@ object Networking {
   
   def runActors(actorIds: List[ActorId], net: VerifiedNetwork, schedule: List[(ActorId,ActorId,Message)]): Unit = {
 
-    def loop(net: VerifiedNetwork, schedule: List[(ActorId,ActorId,Message)]): Unit = {
+    def loop(schedule: List[(ActorId,ActorId,Message)]): Unit = {
 
       schedule match {
         case Nil() => ()
         case Cons((sender, receiver, m), schedule2) =>
           
-          if (net.applyMessage(sender, receiver, m)) 
-            loop(net, schedule)
+          if (validId(net, sender) && validId(net, receiver) && net.applyMessage(sender, receiver, m))
+            loop(schedule)
             
       }
     } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
     
     
-    def initializationLoop(net: VerifiedNetwork, initSchedule: List[ActorId]): Unit = {
+    def initializationLoop(initSchedule: List[ActorId]): Unit = {
       initSchedule match {
         case Nil() => ()
         case Cons(x,xs) => 
           net.getActor(x).init()(net)
-          initializationLoop(net, xs)
+          initializationLoop(xs)
       }
     } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor)) 
   
-    initializationLoop(net, actorIds)
-    loop(net, schedule)
+    initializationLoop(actorIds)
+    loop(schedule)
   
   } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
 
