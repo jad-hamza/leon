@@ -3,6 +3,7 @@ package distribution
 
 import FifoNetwork._
 import Networking._
+import IntQuantifiers._
 
 import leon.lang._
 import leon.collection._
@@ -112,144 +113,102 @@ object ProtocolProof {
   import Protocol._
   
   
-
-  def checkProperty(n: BigInt, p: BigInt => Boolean): Boolean = {
-    
-//     forall ((i: BigInt) => (0 <= i && i < n) ==> p(i))
-    if (n <= 0) true
-    else p(n-1) && checkProperty(n-1,p)
+//   def restrictMessages(n: BigInt, l: List[Message], states: MMap[ActorId,State]): Boolean = {
+//     require(intForAll(n, (i: BigInt) => states.contains(UID(i))))
+//     
+//     l match {
+//       case Cons(Election(uid), ms) => 
+//         0 <= uid && uid < n && elimForAll(n, (i: BigInt) => states.contains(UID(i)), uid) &&
+//         (states(UID(uid))
+//           match {
+//             case Participant() => true
+//             case _ => false
+//           }
+//         ) && ( 
+//           intForAll(n, (i: BigInt) => 
+//             0 <= i && i < n && elimForAll(n, (i: BigInt) => states.contains(UID(i)), i) &&
+//             (states(UID(i)) match {
+//               case KnowLeader(_) => 
+//                 // you cannot know the leader if there is an election going on
+//                 false
+//               case _ => true
+//             })
+//           )
+//         ) &&
+//         restrictMessages(n, ms, states)
+//       case Cons(Elected(uid), ms) => 
+//         intForAll(n, (i: BigInt) => 
+//           0 <= i && i < n && elimForAll(n, (i: BigInt) => states.contains(UID(i)), i) &&
+//           (states(UID(i)) match {
+//           case KnowLeader(uid2) => uid == uid2
+//           case NonParticipant() => 
+//             // the leader cannot be elected if I have not participated yet
+//             false
+//           case Participant() => true
+//         })) && restrictMessages(n, ms, states)
+//       case _ => true
+//     }
+//   }
+  
+  
+  def existsMessage(n: BigInt,  messages: MMap[(ActorId,ActorId),List[Message]], m: Message) = {
+    require(n >= 0)
+    intExists(n, (i: BigInt) => 0 <= i && i < n && messages.getOrElse((UID(i), UID(increment(i,n))), Nil()).contains(m))
   }
-
-  def checkProperty2(n: BigInt, p: (BigInt, BigInt) => Boolean): Boolean = {
-//     forall ((i: BigInt, j: BigInt) => (0 <= i && i < n && 0 <= j && j < n) ==> p(i,j))
-    if (n <= 0) true
-    else 
-      checkProperty2(n-1, p) && 
-      checkProperty(n, (k: BigInt) => p(k,n-1)) &&
-      checkProperty(n, (k: BigInt) => p(n-1,k))
-  }
-  
-  
-  def decrease(n: BigInt, p: BigInt => Boolean): Boolean = {
-    require(checkProperty(n, p))
-    
-    n <= 0 || checkProperty(n-1, p)
-  } holds
-  
-  
-
-  def decreaseLots(n: BigInt, p: BigInt => Boolean, i: BigInt): Boolean = {
-    require(n >= 0 && i >= 0 && i <= n && checkProperty(n, p))
-
-    if (i >= n-1) {
-      checkProperty(i, p)
-    } else {
-      decreaseLots(n-1, p, i)
-      checkProperty(i, p)
-    }
-  } holds
-  
-  
-  def decrease2(n: BigInt, p: (BigInt, BigInt) => Boolean): Boolean = {
-    require(n >= 0 && checkProperty2(n, p))
-    
-    n == 0 || checkProperty2(n-1, p)
-  } holds
-
-  def decreaseLots2(n: BigInt, p: (BigInt, BigInt) => Boolean, i: BigInt): Boolean = {
-    require(n >= 0 && i >= 0 && i <= n && checkProperty2(n, p))
-
-    if (i >= n-1) {
-      checkProperty2(i, p)
-    } else {
-      decreaseLots2(n-1, p, i)
-      checkProperty2(i, p)
-    }
-  } holds
-  
-  
-  def instantiate(n: BigInt, p: BigInt => Boolean, i: BigInt): Boolean = {
-    require(checkProperty(n, p) && i >= 0 && i < n)
-    
-    decreaseLots(n, p, i+1) && // lemma application
-    p(i)
-  } holds
-  
-  
-  def instantiate2(n: BigInt, p: (BigInt, BigInt) => Boolean, i: BigInt, j: BigInt): Boolean = {
-    require(checkProperty2(n, p) && i >= 0 && i < n && 0 <= j && j < n)
-    
-    if (i > j) {
-      decreaseLots2(n, p, i+1) && 
-      instantiate(i+1, (k: BigInt) => p(i,k), j) &&
-      p(i,j)
-    } else {
-      decreaseLots2(n, p, j+1) && 
-      instantiate(j+1, (k: BigInt) => p(k,j), i) &&
-      p(i,j)
-    }
-  } holds
-  
-  def restrictMessages(n: BigInt, l: List[Message], states: MMap[ActorId,State]): Boolean = {
-    require(checkProperty(n, (i: BigInt) => states.contains(UID(i))))
-    
-    l match {
-      case Cons(Election(uid), ms) => 
-        0 <= uid && uid < n && instantiate(n, (i: BigInt) => states.contains(UID(i)), uid) &&
-        (states(UID(uid))
-          match {
-            case Participant() => true
-            case _ => false
-          }
-        ) && ( 
-          checkProperty(n, (i: BigInt) => 
-            0 <= i && i < n && instantiate(n, (i: BigInt) => states.contains(UID(i)), i) &&
-            (states(UID(i)) match {
-              case KnowLeader(_) => 
-                // you cannot know the leader if there is an election going on
-                false
-              case _ => true
-            })
-          )
-        ) &&
-        restrictMessages(n, ms, states)
-      case Cons(Elected(uid), ms) => 
-        checkProperty(n, (i: BigInt) => 
-          0 <= i && i < n && instantiate(n, (i: BigInt) => states.contains(UID(i)), i) &&
-          (states(UID(i)) match {
-          case KnowLeader(uid2) => uid == uid2
-          case NonParticipant() => 
-            // the leader cannot be elected if I have not participated yet
-            false
-          case Participant() => true
-        })) && restrictMessages(n, ms, states)
-      case _ => true
-    }
-  }
-  
   
   // This is an invariant of the class VerifiedNetwork
   def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
     val Params(n, starterProcess) = param
     n > 1  && n == 2 &&
     0 <= starterProcess && starterProcess < n && 
-    checkProperty(n, (i: BigInt) => states.contains(UID(i))) &&
-    checkProperty(n, (i: BigInt) => getActor.contains(UID(i))) && 
-    checkProperty(n, (i: BigInt) =>
-      0 <= i && i < n && instantiate(n, (k: BigInt) => getActor.contains(UID(k)), i) &&
+    intForAll(n, (i: BigInt) => states.contains(UID(i))) &&
+    intForAll(n, (i: BigInt) => getActor.contains(UID(i))) && 
+    intForAll(n, (i: BigInt) =>
+      0 <= i && i < n &&
+      messages.getOrElse((UID(i), UID(increment(i,n))), Nil()).size < 2
+    ) && 
+    intForAll(n, (i: BigInt) =>
+      0 <= i && i < n && elimForAll(n, (k: BigInt) => getActor.contains(UID(k)), i) &&
       getActor(UID(i)).myId == UID(i)
     ) &&
-    checkProperty2(n, (i: BigInt, j: BigInt) => 
-      0 <= i && i < n && instantiate(n, (k: BigInt) => states.contains(UID(k)), i) &&
-      0 <= j && j < n && instantiate(n, (k: BigInt) => states.contains(UID(k)), j) &&
-      messages.contains(UID(i),UID(j)) ==> (
-        restrictMessages(n, messages(UID(i),UID(j)), states) &&
-        j == increment(i,n)
-      ) &&
+    intForAll2(n, (i: BigInt, j: BigInt) => 
+      0 <= i && i < n &&
+      (messages.contains(UID(i),UID(j)) ==> (j == increment(i,n)))
+    ) &&
+    intForAll2(n, (i: BigInt, j: BigInt) => 
+      0 <= i && i < n && elimForAll(n, (k: BigInt) => states.contains(UID(k)), i) &&
+      0 <= j && j < n && elimForAll(n, (k: BigInt) => states.contains(UID(k)), j) &&
       ((states(UID(i)), states(UID(j))) match {
         case (KnowLeader(a), KnowLeader(b)) => a == b
         case _ => true
       })
+    ) && 
+    intForAll2(n, (i: BigInt, j: BigInt) => 
+      0 <= i && i < n &&
+      0 <= j && j < n &&
+      (
+        messages.getOrElse((UID(i), UID(increment(i,n))), Nil()).isEmpty || 
+        messages.getOrElse((UID(i), UID(increment(j,n))), Nil()).isEmpty
+      )
+    ) &&
+    intForAll2(n, (i: BigInt, j: BigInt) =>
+      (existsMessage(n, messages, Election(i)) ==> (
+        states(UID(i)) == Participant() &&
+        (states(UID(j)) match {
+          case KnowLeader(_) => false
+          case _ => true
+        })
+      ))
+    ) &&
+    intForAll2(n, (i: BigInt, j: BigInt) =>
+      (existsMessage(n, messages, Elected(i)) ==>  (
+        states(UID(i)) == KnowLeader(i) &&
+        (states(UID(j)) match {
+          case KnowLeader(i2) => i == i2
+          case NonParticipant() => false
+          case Participant() => true
+        })
+      ))
     )
   }
   
@@ -268,7 +227,7 @@ object ProtocolProof {
         
         0 <= usender && usender < n && 
         ureceiver == increment(usender,n) && 
-        instantiate(n, (i: BigInt) => net.getActor.contains(UID(i)), ureceiver) &&
+        elimForAll(n, (i: BigInt) => net.getActor.contains(UID(i)), ureceiver) &&
         net.getActor.contains(receiver)  &&
         networkInvariant(net.param, net.states, messages2, net.getActor)
 //         &&
@@ -291,7 +250,7 @@ object ProtocolProof {
     n > 1 && 
     0 <= myuid && myuid < n && {
       val nextProcess = UID(increment(myuid, n))
-      (instantiate(n, (i: BigInt) => net.states.contains(UID(i)), myuid))  && (
+      (elimForAll(n, (i: BigInt) => net.states.contains(UID(i)), myuid))  && (
         (sender, m, a.state) match {
           case (id, Election(uid), NonParticipant()) =>
             if (uid > myuid) {
@@ -303,25 +262,16 @@ object ProtocolProof {
               val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
               
 //               true
-              checkProperty(n, (i: BigInt) => newStates.contains(UID(i))) &&
-              checkProperty2(n, (i: BigInt, j: BigInt) => 
-                0 <= i && i < n && instantiate(n, (k: BigInt) => newStates.contains(UID(k)), i) &&
-                0 <= j && j < n && instantiate(n, (k: BigInt) => newStates.contains(UID(k)), j) &&
-                net.messages.contains(UID(i),UID(j)) ==> (
-                  restrictMessages(n, net.messages(UID(i),UID(j)), net.states) &&
-                  j == increment(i,n)
-                ) &&
-                ((newStates(UID(i)), newStates(UID(j))) match {
+              intForAll(n, (i: BigInt) => newStates.contains(UID(i))) &&
+              intForAll2(n, (i: BigInt, j: BigInt) => 
+                0 <= i && i < n && elimForAll(n, (k: BigInt) => net.states.contains(UID(k)), i) &&
+                0 <= j && j < n && elimForAll(n, (k: BigInt) => net.states.contains(UID(k)), j) &&
+                ((net.states(UID(i)), net.states(UID(j))) match {
                   case (KnowLeader(a), KnowLeader(b)) => a == b
                   case _ => true
                 })
-              )
-//               &&
-//               checkProperty(n, (i: BigInt) => getActor.contains(UID(i))) && 
-//               checkProperty(n, (i: BigInt) =>
-//                 0 <= i && i < n && instantiate(n, (k: BigInt) => getActor.contains(UID(k)), i) &&
-//                 getActor(UID(i)).myId == UID(i)
-//               ) &&
+              )  
+
 //               networkInvariant(net.param, newStates, net.messages, net.getActor)
             } 
             else if (uid < myuid) {

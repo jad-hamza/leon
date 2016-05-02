@@ -27,7 +27,6 @@ object PrettyPrinting {
   }
   
   def statesToString(n: BigInt, m: MMap[ActorId,State]): String = {
-    require(n > 0 && checkProperty(n, (i: BigInt) => m.contains(UID(i))))
   
     def loop(i: BigInt) : String = {
       if (i == n) ""
@@ -75,7 +74,7 @@ object PrettyPrinting {
   }
   
   def getActorToString(n: BigInt, getActor: MMap[ActorId,Actor]) = {
-    require(n > 0 && checkProperty(n, (i: BigInt) => getActor.contains(UID(i))))
+    require(n >= 0)
     
     def loop(i: BigInt) : String = {
       require(0 <= i && i <= n)
