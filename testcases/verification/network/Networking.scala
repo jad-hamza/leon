@@ -15,11 +15,11 @@ object Networking {
   abstract class Parameter
   
   
-  def makeNetwork(param: Parameter, states: MMap[ActorId,State], getActor: MMap[ActorId,Actor]) = {
-    require(networkInvariant(param, states, MMap(), getActor))
-    
-    VerifiedNetwork(param, states, MMap(), getActor)
-  }
+//   def makeNetwork(param: Parameter, states: MMap[ActorId,State], getActor: MMap[ActorId,Actor]) = {
+//     require(networkInvariant(param, states, MMap(), getActor))
+//     
+//     VerifiedNetwork(param, states, MMap(), getActor)
+//   }
   
   abstract class Actor {
     val myId: ActorId
@@ -46,8 +46,12 @@ object Networking {
   }
   
   
-  def runActors(actorIds: List[ActorId], net: VerifiedNetwork, schedule: List[(ActorId,ActorId,Message)]): Unit = {
-
+  def runActors(p: Parameter, actorIds: List[ActorId], schedule: List[(ActorId,ActorId,Message)]): Unit = {
+    require(validParam(p))
+  
+    val net = makeNetwork(p)
+    
+  
     def loop(schedule: List[(ActorId,ActorId,Message)]): Unit = {
 
       schedule match {
@@ -65,15 +69,17 @@ object Networking {
       initSchedule match {
         case Nil() => ()
         case Cons(x,xs) => 
-          net.getActor(x).init()(net)
-          initializationLoop(xs)
+          if (validId(net, x)) {
+            net.getActor(x).init()(net)
+            initializationLoop(xs)
+          }
       }
     } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor)) 
   
     initializationLoop(actorIds)
     loop(schedule)
   
-  } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
+  } 
 
   
 }

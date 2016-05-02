@@ -4,7 +4,7 @@ package distribution
 import FifoNetwork._
 import Networking._
 
-import leon.lang.BooleanDecorations
+import leon.lang._
 import leon.collection._
 import leon.proof._
 import leon.annotation._
@@ -93,6 +93,25 @@ object ProtocolProof {
   def validId(net: VerifiedNetwork, id: ActorId) = {
     true
   }
+  
+  
+  
+  def makeNetwork(p: Parameter) = {
+    
+    def states(id: ActorId): Option[State] = id match {
+      case ActorId1() => Some(CCounter(0))
+      case ActorId2() => Some(VCounter(0))
+    }
+    
+    def getActor(id: ActorId): Option[Actor] = id match {
+      case ActorId1() => Some(CountingActor(actor1))
+      case ActorId2() => Some(CheckingActor(actor2))
+    }
+    
+    VerifiedNetwork(NoParam(), MMap(states), MMap(), MMap(getActor))
+  }
+  
+  def validParam(p: Parameter) = true
   
   // This is an invariant of the class VerifiedNetwork
   def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {

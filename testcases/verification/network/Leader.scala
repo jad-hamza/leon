@@ -113,6 +113,20 @@ object ProtocolProof {
   import Protocol._
   
   
+  def makeNetwork(p: Parameter) = {
+    require(0 <= starterProcess && starterProcess < n)
+    def states(id: ActorId): Option[State] = Some(NonParticipant())
+    
+    def getActor(id: ActorId): Option[Actor] = Some(Process(id))
+    
+    VerifiedNetwork(Params(n, starterProcess), MMap(states), MMap(), MMap(getActor))
+  }
+  
+  
+  def validParam(p: Parameter) = {
+    val Params(n, starter) = p
+    0 <= starter && starter < n
+  }
 //   def restrictMessages(n: BigInt, l: List[Message], states: MMap[ActorId,State]): Boolean = {
 //     require(intForAll(n, (i: BigInt) => states.contains(UID(i))))
 //     
@@ -346,6 +360,7 @@ object ProtocolProof {
         val channel = net.messages.getOrElse((a.myId, nextProcess), Nil())
         val newChannel = channel :+ Election(myuid)
         val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
+//         true
         networkInvariant(net.param, newStates, net.messages, net.getActor) &&
         networkInvariant(net.param, newStates, newMessages, net.getActor)
   //       update(Participant())
