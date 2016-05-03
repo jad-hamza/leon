@@ -199,21 +199,26 @@ object ProtocolProof {
   
   } holds
   
+  def smallChannel(n: BigInt, messages: MMap[(ActorId,ActorId),List[Message]])(i: BigInt) = {
+    0 <= i && i < n && messages.getOrElse((UID(i), UID(increment(i,n))), Nil()).size < 2
+  }
+  
+  def ringChannels(n: BigInt, messages: MMap[(ActorId,ActorId),List[Message]])(i: BigInt, j: BigInt) = {
+    0 <= i && i < n && (messages.contains(UID(i),UID(j)) ==> (j == increment(i,n)))
+  }
+  
   // This is an invariant of the class VerifiedNetwork
   def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
     val Params(n, starterProcess) = param
     validParam(param) && 
     intForAll(n, statesDefined(states)) &&
-    intForAll(n, getActorDefined(getActor))
-    
-//     intForAll(n, (i: BigInt) =>
-//       0 <= i && i < n &&
-//       messages.getOrElse((UID(i), UID(increment(i,n))), Nil()).size < 2
-//     ) && 
+    intForAll(n, getActorDefined(getActor)) 
+//     &&
+//     intForAll2(n, ringChannels(n, messages))
 //     intForAll2(n, (i: BigInt, j: BigInt) => 
-//       0 <= i && i < n &&
-//       (messages.contains(UID(i),UID(j)) ==> (j == increment(i,n)))
-//     ) &&
+//     ) 
+//     intForAll(n, smallChannel(n, messages))
+      
 //     intForAll2(n, (i: BigInt, j: BigInt) => 
 //       0 <= i && i < n && elimForAll(n, (k: BigInt) => states.contains(UID(k)), i) &&
 //       0 <= j && j < n && elimForAll(n, (k: BigInt) => states.contains(UID(k)), j) &&
@@ -335,8 +340,9 @@ object ProtocolProof {
               intForAll(n, statesDefined(states)) &&
               statesStillDefined(n, states, a.myId, Participant())  &&
               intForAll(n, statesDefined(states.updated(a.myId, Participant()))) &&
-              networkInvariant(net.param, newStates, net.messages, net.getActor) &&
-              networkInvariant(net.param, newStates, newMessages, net.getActor)
+              networkInvariant(net.param, newStates, net.messages, net.getActor) 
+//               &&
+//               networkInvariant(net.param, newStates, newMessages, net.getActor)
             } 
             else if (uid < myuid) {
 //             update (Participant())
@@ -349,8 +355,9 @@ object ProtocolProof {
               intForAll(n, statesDefined(states))  &&
               statesStillDefined(n, states, a.myId, Participant()) &&
               intForAll(n, statesDefined(newStates)) &&
-              networkInvariant(net.param, newStates, net.messages, net.getActor) &&
-              networkInvariant(net.param, newStates, newMessages, net.getActor)
+              networkInvariant(net.param, newStates, net.messages, net.getActor) 
+//               &&
+//               networkInvariant(net.param, newStates, newMessages, net.getActor)
             }
             else {
               // I cannot receive an Election message equal to my uid if I'm not a participant
@@ -378,8 +385,9 @@ object ProtocolProof {
               intForAll(n, statesDefined(states))  &&
               statesStillDefined(n, states, a.myId, KnowLeader(uid)) &&
               intForAll(n, statesDefined(newStates)) &&
-              networkInvariant(net.param, newStates, net.messages, net.getActor) &&
-              networkInvariant(net.param, newStates, newMessages, net.getActor)
+              networkInvariant(net.param, newStates, net.messages, net.getActor) 
+//               &&
+//               networkInvariant(net.param, newStates, newMessages, net.getActor)
             } else {
               true
               // discard smaller uid Election message
@@ -401,8 +409,9 @@ object ProtocolProof {
               intForAll(n, statesDefined(states)) &&
               statesStillDefined(n, states, a.myId, KnowLeader(uid)) &&
               intForAll(n, statesDefined(newStates)) &&
-              networkInvariant(net.param, newStates, net.messages, net.getActor) &&
-              networkInvariant(net.param, newStates, newMessages, net.getActor)
+              networkInvariant(net.param, newStates, net.messages, net.getActor) 
+//               &&
+//               networkInvariant(net.param, newStates, newMessages, net.getActor)
           }
           
           case (id, Elected(uid), KnowLeader(uid2)) => {
