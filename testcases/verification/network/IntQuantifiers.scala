@@ -9,27 +9,27 @@ import scala.language.postfixOps
 object IntQuantifiers {
 
   def intForAll(n: BigInt, p: BigInt => Boolean): Boolean = {    
-    forall ((i: BigInt) => (0 <= i && i < n) ==> p(i))
+//     forall ((i: BigInt) => (0 <= i && i < n) ==> p(i))
 
-//     if (n <= 0) true
-//     else p(n-1) && intForAll(n-1,p)
+    if (n <= 0) true
+    else p(n-1) && intForAll(n-1,p)
   }
 
   def intExists(n: BigInt, p: BigInt => Boolean): Boolean = {    
-    ! forall ((i: BigInt) => (0 <= i && i < n) ==> !p(i))
+//     ! forall ((i: BigInt) => (0 <= i && i < n) ==> !p(i))
 
-//     if (n <= 0) false
-//     else p(n-1) || intExists(n-1,p)
+    if (n <= 0) false
+    else p(n-1) || intExists(n-1,p)
   }
 
   def intForAll2(n: BigInt, p: (BigInt, BigInt) => Boolean): Boolean = {
-    forall ((i: BigInt, j: BigInt) => (0 <= i && i < n && 0 <= j && j < n) ==> p(i,j))
+//     forall ((i: BigInt, j: BigInt) => (0 <= i && i < n && 0 <= j && j < n) ==> p(i,j))
 
-//     if (n <= 0) true
-//     else 
-//       intForAll2(n-1, p) && 
-//       intForAll(n, (k: BigInt) => p(k,n-1)) &&
-//       intForAll(n, (k: BigInt) => p(n-1,k))
+    if (n <= 0) true
+    else 
+      intForAll2(n-1, p) && 
+      intForAll(n, (k: BigInt) => p(k,n-1)) &&
+      intForAll(n, (k: BigInt) => p(n-1,k))
   }
   
   
@@ -72,25 +72,28 @@ object IntQuantifiers {
   
   
   def elimForAll(n: BigInt, p: BigInt => Boolean, i: BigInt): Boolean = {
-    require(intForAll(n, p) && i >= 0 && i < n)
+    require(intForAll(n, p) && 0 <= i && i < n)
     
-//     decreaseLots(n, p, i+1) && // lemma application
-    p(i)
+//     decreaseLots(n, p, i+1)
+    if (n <= 0) false
+    else if (i == n-1) p(i)
+    else intForAll(n-1, p) && elimForAll(n-1, p, i) && p(i)
+    
   } holds
   
   
   def elimForAll2(n: BigInt, p: (BigInt, BigInt) => Boolean, i: BigInt, j: BigInt): Boolean = {
     require(intForAll2(n, p) && i >= 0 && i < n && 0 <= j && j < n)
     
-//     if (i > j) {
-//       decreaseLots2(n, p, i+1) && 
-//       elimForAll(i+1, (k: BigInt) => p(i,k), j) &&
-//       p(i,j)
-//     } else {
-//       decreaseLots2(n, p, j+1) && 
-//       elimForAll(j+1, (k: BigInt) => p(k,j), i) &&
+    if (i > j) {
+      decreaseLots2(n, p, i+1) && 
+      elimForAll(i+1, (k: BigInt) => p(i,k), j) &&
       p(i,j)
-//     }
+    } else {
+      decreaseLots2(n, p, j+1) && 
+      elimForAll(j+1, (k: BigInt) => p(k,j), i) &&
+      p(i,j)
+    }
   } holds
   
   def elimExists(n: BigInt, p: BigInt => Boolean): BigInt = {
