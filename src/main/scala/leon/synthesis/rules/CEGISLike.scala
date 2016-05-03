@@ -441,7 +441,7 @@ abstract class CEGISLike(name: String) extends Rule(name) {
 
         // This program contains a simplifiable expression,
         // which means it is equivalent to a simpler one
-        // Deactivated for now, since it doesnot seem to help
+        // Deactivated for now, since it does not seem to help
         if (redundancyCheck && params.optimizations && exists(redundant)(outerSol)) {
           excludeProgram(bs, true)
           return Some(false)
@@ -451,13 +451,22 @@ abstract class CEGISLike(name: String) extends Rule(name) {
         cTreeFd.fullBody = innerSol
 
         timers.testForProgram.start()
+
+        def withBindings(e: Expr) = p.pc.bindings.foldRight(e){
+          case ((id, v), bd) => let(id, outerExprToInnerExpr(v), bd)
+        }
+
+        val boundCnstr = withBindings(cnstr)
+
         val res = ex match {
           case InExample(ins) =>
-            evaluator.eval(cnstr, p.as.zip(ins).toMap ++ p.pc.bindings)
+            evaluator.eval(boundCnstr, p.as.zip(ex.ins).toMap)
 
           case InOutExample(ins, outs) =>
-            val eq = equality(innerSol, tupleWrap(outs))
-            evaluator.eval(eq, p.as.zip(ins).toMap ++ p.pc.bindings)
+            evaluator.eval(
+              withBindings(equality(innerSol, tupleWrap(outs))),
+              p.as.zip(ex.ins).toMap
+            )
         }
         timers.testForProgram.stop()
 
@@ -468,15 +477,6 @@ abstract class CEGISLike(name: String) extends Rule(name) {
             Some(res == BooleanLiteral(true))
 
           case EvaluationResults.RuntimeError(err) =>
-            /*if (err.contains("Empty production rule")) {
-              println(programCTree.asString)
-              println(bValues)
-              println(ex)
-              println(this.getExpr(bValues))
-              (new Throwable).printStackTrace()
-              println(err)
-              println()
-            }*/
             debug("RE testing CE: "+err)
             Some(false)
 
@@ -695,7 +695,7 @@ abstract class CEGISLike(name: String) extends Rule(name) {
         timers.cex.start()
         val solverf = SolverFactory.getFromSettings(hctx, programCTree).withTimeout(cexSolverTo)
         val solver  = solverf.getNewSolver()
-        val cnstr = FunctionInvocation(phiFd.typed, phiFd.params.map(_.id.toVariable))
+        val cnstr   = FunctionInvocation(phiFd.typed, phiFd.params.map(_.id.toVariable))
 
         try {
           solver.assertCnstr(andJoin(bsOrdered.map(b => if (bs(b)) b.toVariable else Not(b.toVariable))))
@@ -772,7 +772,7 @@ abstract class CEGISLike(name: String) extends Rule(name) {
           }
         }
 
-        val baseExampleInputs = p.eb.examples ++ solverExample
+        val baseExampleInputs = p.qebFiltered.examples ++ solverExample
 
         ifDebug { debug =>
           baseExampleInputs.foreach { in =>
@@ -783,7 +783,7 @@ abstract class CEGISLike(name: String) extends Rule(name) {
         /**
          * We (lazily) generate additional tests for discarding potential programs with a data generator
          */
-        val nTests = if (p.pc == BooleanLiteral(true)) 50 else 20
+        val nTests = if (p.pc.isEmpty) 50 else 20
 
         val inputGenerator: Iterator[Example] = {
           val complicated = exists{
@@ -798,7 +798,7 @@ abstract class CEGISLike(name: String) extends Rule(name) {
             if (useVanuatoo) {
               new VanuatooDataGen(hctx, hctx.program).generateFor(p.as, p.pc.toClause, nTests, 3000).map(InExample)
             } else {
-              val evaluator = new DualEvaluator(hctx, hctx.program, CodeGenParams.default)
+              val evaluator = new DualEvaluator(hctx, hctx.program)
               new GrammarDataGen(evaluator, ValueGrammar).generateFor(p.as, p.pc.toClause, nTests, 1000).map(InExample)
             }
           }
@@ -850,10 +850,11 @@ abstract class CEGISLike(name: String) extends Rule(name) {
     
             debug(s"#Tests: >= ${gi.bufferedCount}")
             ifDebug{ printer =>
-              for (e <- baseExampleInputs.take(10)) {
+              val es = allInputExamples()
+              for (e <- es.take(Math.min(gi.bufferedCount, 10))) {
                 printer(" - "+e.asString)
               }
-              if(baseExampleInputs.size > 10) {
+              if(es.hasNext) {
                 printer(" - ...")
               }
             }
@@ -865,7 +866,7 @@ abstract class CEGISLike(name: String) extends Rule(name) {
                 val examples = allInputExamples()
                 var badExamples = List[Example]()
                 var stop = false
-                for (e <- examples if !stop) {
+                for (e <- examples if !stop && !badExamples.contains(e)) {
                   ndProgram.testForProgram(bs)(e) match {
                     case Some(true) => // ok, passes
                     case Some(false) =>
@@ -935,8 +936,9 @@ abstract class CEGISLike(name: String) extends Rule(name) {
                         failedTestsStats(ce) += 1
                         ndProgram.excludeProgram(bs, false)
 
+                        var bad = false
                         // Retest whether the newly found C-E invalidates some programs
-                        ndProgram.prunedPrograms.foreach { p =>
+                        for (p <- ndProgram.prunedPrograms if !bad) {
                           ndProgram.testForProgram(p)(ce) match {
                             case Some(true) =>
                             case Some(false) =>
@@ -946,6 +948,7 @@ abstract class CEGISLike(name: String) extends Rule(name) {
                             case None =>
                               debug(s" Test $ce failed, removing...")
                               gi -= ce
+                              bad = true
                           }
                         }
 

@@ -295,13 +295,14 @@ object ExprOps extends GenTreeOps[Expr] {
       var remainingIds: Map[TypeTree, List[Identifier]] = typedIds.toMap
 
       def getId(e: Expr): Identifier = {
-        val newId = remainingIds.get(e.getType) match {
+        val tpe = TypeOps.bestRealType(e.getType)
+        val newId = remainingIds.get(tpe) match {
           case Some(x :: xs) =>
-            remainingIds += e.getType -> xs
+            remainingIds += tpe -> xs
             x
           case _ =>
-            val x = FreshIdentifier("x", e.getType, true)
-            typedIds(e.getType) = typedIds(e.getType) :+ x
+            val x = FreshIdentifier("x", tpe, true)
+            typedIds(tpe) = typedIds(tpe) :+ x
             x
         }
         subst += newId -> e
@@ -415,6 +416,9 @@ object ExprOps extends GenTreeOps[Expr] {
         } else {
           None
         }
+
+      case LetTuple(ids, Tuple(elems), body) =>
+        Some(ids.zip(elems).foldRight(body) { case ((id, elem), bd) => Let(id, elem, body) })
 
       /*case LetPattern(patt, e0, body) if isPurelyFunctional(e0) =>
         // Will turn the match-expression with a single case into a list of lets.
@@ -1000,8 +1004,8 @@ object ExprOps extends GenTreeOps[Expr] {
     postMap(transform, applyRec = true)(expr)
   }
 
-  def simplifyPaths(sf: SolverFactory[Solver], initC: List[Expr] = Nil): Expr => Expr = {
-    new SimplifierWithPaths(sf, initC).transform
+  def simplifyPaths(sf: SolverFactory[Solver], initPC: Path = Path.empty): Expr => Expr = {
+    new SimplifierWithPaths(sf, initPC).transform
   }
 
   trait Traverser[T] {
@@ -1017,7 +1021,7 @@ object ExprOps extends GenTreeOps[Expr] {
   }
 
   trait CollectorWithPaths[T] extends TransformerWithPC with Traverser[Seq[T]] {
-    protected val initPath: Seq[Expr] = Nil
+    protected val initPath: Path = Path.empty
 
     private var results: Seq[T] = Nil
 
@@ -1037,11 +1041,11 @@ object ExprOps extends GenTreeOps[Expr] {
 
     def traverse(e: Expr): Seq[T] = traverse(e, initPath)
 
-    def traverse(e: Expr, init: Expr): Seq[T] = traverse(e, Seq(init))
+    def traverse(e: Expr, init: Expr): Seq[T] = traverse(e, Path(init))
 
-    def traverse(e: Expr, init: Seq[Expr]): Seq[T] = {
+    def traverse(e: Expr, init: Path): Seq[T] = {
       results = Nil
-      rec(e, Path(init))
+      rec(e, init)
       results
     }
   }
@@ -1762,7 +1766,7 @@ object ExprOps extends GenTreeOps[Expr] {
 
           val newFd = fdOuter.duplicate()
 
-          val simp = Simplifiers.bestEffort(ctx, p) _
+          val simp = Simplifiers.bestEffort(ctx, p)((_: Expr))
 
           newFd.body          = fdInner.body.map(b => simplePreTransform(pre)(b))
           newFd.precondition  = mergePre(fdOuter.precondition, fdInner.precondition).map(simp)
@@ -2124,7 +2128,7 @@ object ExprOps extends GenTreeOps[Expr] {
   }
 
 
-  def simpleCorrectnessCond(e: Expr, path: List[Expr], sf: SolverFactory[Solver]): Expr = {
+  def simpleCorrectnessCond(e: Expr, path: Path, sf: SolverFactory[Solver]): Expr = {
     simplifyPaths(sf, path)(
       andJoin( collectCorrectnessConditions(e) map { _._2 } )
     )

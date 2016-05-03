@@ -9,6 +9,7 @@ import purescala.Types.{TypeTree,TupleType}
 import purescala.Definitions._
 import purescala.ExprOps._
 import purescala.Constructors._
+import purescala.Path
 
 import leon.utils.Simplifiers
 
@@ -55,7 +56,7 @@ class Solution(val pre: Expr, val defs: Set[FunDef], val term: Expr, val isTrust
 
 
   def toSimplifiedExpr(ctx: LeonContext, p: Program, within: FunDef): Expr = {
-    withoutSpec(Simplifiers.bestEffort(ctx, p)(req(within.precOrTrue, toExpr))).get
+    Simplifiers.bestEffort(ctx, p)(toExpr, Path(within.precOrTrue))
   }
 }
 
@@ -70,14 +71,14 @@ object Solution {
     new Solution(BooleanLiteral(true), Set(), simplify(term), isTrusted)
   }
 
-  def unapply(s: Solution): Option[(Expr, Set[FunDef], Expr)] = if (s eq null) None else Some((s.pre, s.defs, s.term))
+  def unapply(s: Solution): Option[(Expr, Set[FunDef], Expr, Boolean)] = if (s eq null) None else Some((s.pre, s.defs, s.term, s.isTrusted))
 
   def choose(p: Problem): Solution = {
-    new Solution(BooleanLiteral(true), Set(), Choose(Lambda(p.xs.map(ValDef(_)), p.phi)))
+    new Solution(BooleanLiteral(true), Set(), Choose(Lambda(p.xs.map(ValDef), p.phi)))
   }
 
   def chooseComplete(p: Problem): Solution = {
-    new Solution(BooleanLiteral(true), Set(), Choose(Lambda(p.xs.map(ValDef(_)), p.pc and p.phi)))
+    new Solution(BooleanLiteral(true), Set(), Choose(Lambda(p.xs.map(ValDef), p.pc and p.phi)))
   }
 
   // Generate the simplest, wrongest solution, used for complexity lowerbound

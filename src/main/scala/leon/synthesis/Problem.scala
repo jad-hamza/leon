@@ -21,30 +21,38 @@ import Witnesses._
   * @param pc The path condition so far
   * @param phi The formula on `as` and `xs` to satisfy
   * @param xs The list of output identifiers for which we want to compute a function
+  * @note Since the examples are not eagerly filtered by [[Rule]]s, some may not
+  *       pass the path condition. Use [[qebFiltered]] to get the legal ones.
   */
 case class Problem(as: List[Identifier], ws: Expr, pc: Path, phi: Expr, xs: List[Identifier], eb: ExamplesBank = ExamplesBank.empty) extends Printable {
+
+  // require(eb.examples.forall(_.ins.size == as.size))
+
+  val TopLevelAnds(wsList) = ws
 
   def inType  = tupleTypeWrap(as.map(_.getType))
   def outType = tupleTypeWrap(xs.map(_.getType))
 
-  def allAs = as ++ pc.bindings.map(_._1)
+  def allAs = as ++ (pc.bindings.map(_._1) diff wsList.collect{ case Inactive(i) => i })
 
   def asString(implicit ctx: LeonContext): String = {
+    def pad(padding: String, text: String) = text.lines.mkString(s"\n|$padding")
     val pcws = pc withCond ws
 
     val ebInfo = "/"+eb.valids.size+","+eb.invalids.size+"/"
 
-    s"""|⟦  ${if (as.nonEmpty) as.map(_.asString).mkString(", ") else "()"}
-        |   ${pcws.toClause.asString} ≺
-        |   ⟨ ${phi.asString} ⟩ 
-        |   ${if (xs.nonEmpty) xs.map(_.asString).mkString(", ") else "()"}
-        |⟧  $ebInfo""".stripMargin
+    s"""|⟦ α ${if (as.nonEmpty) as.map(_.asString).mkString(", ") else "()"}
+        |  Π ${pad("    ", pcws.fullClause.asString)}
+        |  φ ${pad("    ", phi.asString)}
+        |  x ${if (xs.nonEmpty) xs.map(_.asString).mkString(", ") else "()"}
+        |⟧ $ebInfo""".stripMargin
   }
 
-  def withWs(es: Seq[Expr]) = {
-    val TopLevelAnds(prev) = ws
-    copy(ws = andJoin(prev ++ es))
+  def withWs(es: Traversable[Expr]) = {
+    copy(ws = andJoin(wsList ++ es))
   }
+
+  def qebFiltered(implicit sctx: SearchContext) = qeb.evalIns.filterIns(pc.fullClause)
 
   // Qualified example bank, allows us to perform operations (e.g. filter) with expressions
   def qeb(implicit sctx: SearchContext) = QualifiedExamplesBank(this.as, this.xs, eb)
@@ -52,6 +60,7 @@ case class Problem(as: List[Identifier], ws: Expr, pc: Path, phi: Expr, xs: List
 }
 
 object Problem {
+
   def fromSpec(
     spec: Expr,
     pc: Path = Path.empty,

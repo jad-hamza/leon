@@ -9,14 +9,13 @@ import purescala.Path
 import purescala.Common._
 import purescala.Expressions._
 import purescala.ExprOps._
-import purescala.Extractors._
 import purescala.Constructors._
 import purescala.Types.CaseClassType
 
 case object EquivalentInputs extends NormalizingRule("EquivalentInputs") {
   def instantiateOn(implicit hctx: SearchContext, p: Problem): Traversable[RuleInstantiation] = {
 
-    val simplifier = Simplifiers.bestEffort(hctx, hctx.program) _
+    val simplifier = Simplifiers.bestEffort(hctx, hctx.program)(_:Expr)
 
     var subst = Map.empty[Identifier, Expr]
     var reverseSubst = Map.empty[Identifier, Expr]
@@ -62,7 +61,7 @@ case object EquivalentInputs extends NormalizingRule("EquivalentInputs") {
 
       val reverse = equivalences.toMap.flatMap { case (id, CaseClass(cct, fields)) =>
         (cct.classDef.fields zip fields).map { case (vid, Variable(fieldId)) =>
-          fieldId -> CaseClassSelector(cct, AsInstanceOf(Variable(id), cct), vid.id)
+          fieldId -> caseClassSelector(cct, asInstOf(Variable(id), cct), vid.id)
         }
       }
 
@@ -73,13 +72,13 @@ case object EquivalentInputs extends NormalizingRule("EquivalentInputs") {
 
     // We could discover one equivalence, which could allow us to discover
     // other equivalences: We do a fixpoint with limit 5.
-    val simplifiedPath = fixpoint({ (path: Path) => discoverEquivalences(path) }, 5)(p.pc)
+    val newPC = fixpoint({ (path: Path) => discoverEquivalences(path) }, 5)(p.pc)
 
     if (subst.nonEmpty) {
       // XXX: must take place in this order!! obsolete & free is typically non-empty
       val newAs = (p.as ++ free).distinct.filterNot(obsolete)
 
-      val newBank = p.eb.map { ex =>
+      val newBank = p.eb.flatMap { ex =>
         val mapping = (p.as zip ex.ins).toMap
         val newIns = newAs.map(a => mapping.getOrElse(a, replaceFromIDs(mapping, reverseSubst(a))))
         List(ex match {
@@ -88,11 +87,13 @@ case object EquivalentInputs extends NormalizingRule("EquivalentInputs") {
         })
       }
 
+      val simplifierWithNewPC = Simplifiers.bestEffort(hctx, hctx.program)(_:Expr, newPC)
+
       val sub = p.copy(
         as = newAs,
         ws = replaceFromIDs(subst, p.ws),
-        pc = simplifiedPath,
-        phi = simplifier(replaceFromIDs(subst, p.phi)),
+        pc = newPC,
+        phi = simplifierWithNewPC(replaceFromIDs(subst, p.phi)),
         eb = newBank
       )
 
