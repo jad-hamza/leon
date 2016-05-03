@@ -59,7 +59,7 @@ object Networking {
         case Cons((sender, receiver, m), schedule2) =>
           
           if (validId(net, sender) && validId(net, receiver) && net.applyMessage(sender, receiver, m))
-            loop(schedule)
+            loop(schedule2)
             
       }
     } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
@@ -69,7 +69,7 @@ object Networking {
       initSchedule match {
         case Nil() => ()
         case Cons(x,xs) => 
-          if (validId(net, x)) {
+          if (validId(net, x) && validGetActor(net, x)) {
             net.getActor(x).init()(net)
             initializationLoop(xs)
           }

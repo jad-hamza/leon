@@ -95,6 +95,11 @@ object ProtocolProof {
   }
   
   
+  def validGetActor(net: VerifiedNetwork, id: ActorId) = {
+    
+    net.getActor.contains(id)
+  } holds
+  
   
   def makeNetwork(p: Parameter) = {
     
