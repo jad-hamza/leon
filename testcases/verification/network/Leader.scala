@@ -124,14 +124,17 @@ object ProtocolProof {
   val init_getActor = MMap(init_getActor_fun)
   val init_messages = MMap[(ActorId,ActorId), List[Message]]()
   
+
   def makeNetwork(p: Parameter) = {
     require {
       val Params(n, starterProcess) = p
       validParam(p) && 
       init_statesDefined(n) && 
       init_getActorDefined(n) && 
+      init_ringChannels(n) && 
       intForAll(n, statesDefined(init_states)) &&
-      intForAll(n, getActorDefined(init_getActor))
+      intForAll(n, getActorDefined(init_getActor)) &&
+      intForAll2(n, ringChannels(n, MMap()))
     }
     
     val Params(n, starterProcess) = p
@@ -168,8 +171,8 @@ object ProtocolProof {
   }
   
   def init_ringChannels(n: BigInt): Boolean =  {
-    if (n <= 0) intForAll(n, ringChannels(n, MMap()))
-    else init_ringChannels(n-1) && intForAll(n, ringChannels(n, MMap()))
+    if (n <= 0) intForAll2(n, ringChannels(n, MMap()))
+    else init_ringChannels(n-1) && intForAll2(n, ringChannels(n, MMap()))
   }
   
   def init_statesDefined(n: BigInt): Boolean = {
