@@ -22,14 +22,11 @@ object IntQuantifiers {
     else p(n-1) || intExists(n-1,p)
   }
 
-  def intForAll2(n: BigInt, p: (BigInt, BigInt) => Boolean): Boolean = {
+  def intForAll2(n: BigInt, m: BigInt, p: (BigInt, BigInt) => Boolean): Boolean = {
 //     forall ((i: BigInt, j: BigInt) => (0 <= i && i < n && 0 <= j && j < n) ==> p(i,j))
 
-    if (n <= 0) true
-    else 
-      intForAll2(n-1, p) && 
-      intForAll(n, (k: BigInt) => p(k,n-1)) &&
-      intForAll(n, (k: BigInt) => p(n-1,k))
+    if (n <= 0 || m <= 0) true
+    else p(n-1,m-1) && intForAll2(n-1, m, p) && intForAll2(n, m-1, p)
   }
   
   
@@ -43,12 +40,12 @@ object IntQuantifiers {
     
   } holds
   
-  def elimForAll2(n: BigInt, p: (BigInt, BigInt) => Boolean, i: BigInt, j: BigInt): Boolean = {
-    require(intForAll2(n, p) && i >= 0 && i < n && 0 <= j && j < n)
+  def elimForAll2(n: BigInt, m: BigInt, p: (BigInt, BigInt) => Boolean, i: BigInt, j: BigInt): Boolean = {
+    require(intForAll2(n, m, p) && i >= 0 && i < n && 0 <= j && j < m)
     
-    if (i == n-1) elimForAll(n, (k: BigInt) => p(n-1,k), j)
-    else if (j == n-1) elimForAll(n, (k: BigInt) => p(k,n-1), i)
-    else elimForAll2(n-1, p, i, j)
+    if (i == n-1 && j == m-1) true
+    else if (i < n-1) elimForAll2(n-1, m, p, i, j)
+    else elimForAll2(n, m-1, p, i, j)
 
   } ensuring(_ => p(i,j))
   

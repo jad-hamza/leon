@@ -119,31 +119,41 @@ object ProtocolProof {
   
   def init_states_fun(id: ActorId): Option[State] = Some(NonParticipant())
   def init_getActor_fun(id: ActorId): Option[Actor] = Some(Process(id))
+  def init_Messages_fun(ids: (ActorId,ActorId)): Option[List[Message]] = None()
   
-  val init_states: MMap[ActorId,State] = MMap(init_states_fun)
+  val init_states = MMap(init_states_fun)
   val init_getActor = MMap(init_getActor_fun)
-  val init_messages = MMap[(ActorId,ActorId), List[Message]]()
+  val init_messages = MMap(init_Messages_fun)
   
 
   def makeNetwork(p: Parameter) = {
     require {
       val Params(n, starterProcess) = p
-      validParam(p) && 
-      init_statesDefined(n) && 
-      init_getActorDefined(n) && 
-      init_ringChannels(n) && 
-      intForAll(n, statesDefined(init_states)) &&
-      intForAll(n, getActorDefined(init_getActor)) &&
-      intForAll2(n, ringChannels(n, init_messages))
+      validParam(p)
     }
     
     val Params(n, starterProcess) = p
+    if (
+      init_statesDefined(n) && 
+      init_getActorDefined(n) && 
+      init_ringChannels(n)
+    ) {
+      check(
+        validParam(p) &&
+        intForAll(n, statesDefined(init_states)) &&
+        intForAll(n, getActorDefined(init_getActor)) &&
+        intForAll2(n, n, ringChannels(n, init_messages)) 
+      )
+    } else check(false)
     
-    check (validParam(p) &&
-      intForAll(n, statesDefined(init_states)) &&
-      intForAll(n, getActorDefined(init_getActor)) &&
-      intForAll2(n, ringChannels(n, init_messages)) &&
-      networkInvariant(p, init_states, init_messages, init_getActor))
+//     check (
+//     )
+    
+//     check (validParam(p) &&
+//       intForAll(n, statesDefined(init_states)) &&
+//       intForAll(n, getActorDefined(init_getActor)) &&
+//       intForAll2(n, ringChannels(n, init_messages)) &&
+//       networkInvariant(p, init_states, init_messages, init_getActor))
     
     VerifiedNetwork(p, init_states, init_messages, init_getActor)
   }
@@ -173,10 +183,22 @@ object ProtocolProof {
     (i: BigInt) => states.contains(UID(i))
   }
   
+  def init_ringChannels_aux(u: BigInt, v: BigInt, n: BigInt): Boolean =  {
+    require(u <= n && v <= n)
+    
+    if (u <= 0 || v <= 0) 
+      intForAll2(u, v, ringChannels(n, init_messages))
+    else {
+      init_ringChannels_aux(u-1, v, n) && 
+      init_ringChannels_aux(u, v-1, n) && 
+      intForAll2(u, v, ringChannels(n, init_messages))
+    }
+  } holds
+  
   def init_ringChannels(n: BigInt): Boolean =  {
-    if (n <= 0) intForAll2(n, ringChannels(n, MMap()))
-    else init_ringChannels(n-1) && intForAll2(n, ringChannels(n, MMap()))
-  }
+    init_ringChannels_aux(n, n, n) &&
+    intForAll2(n, n, ringChannels(n, init_messages))
+  } holds
   
   def init_statesDefined(n: BigInt): Boolean = {
     
@@ -224,7 +246,7 @@ object ProtocolProof {
     validParam(param) && 
     intForAll(n, statesDefined(states)) &&
     intForAll(n, getActorDefined(getActor))  &&
-    intForAll2(n, ringChannels(n, messages))
+    intForAll2(n, n, ringChannels(n, messages))
 //     intForAll2(n, (i: BigInt, j: BigInt) => 
 //     ) 
 //     intForAll(n, smallChannel(n, messages))
