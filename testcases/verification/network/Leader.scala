@@ -129,31 +129,14 @@ object ProtocolProof {
   def makeNetwork(p: Parameter) = {
     require {
       val Params(n, starterProcess) = p
-      validParam(p)
-    }
-    
-    val Params(n, starterProcess) = p
-    if (
+      validParam(p) &&
       init_statesDefined(n) && 
       init_getActorDefined(n) && 
-      init_ringChannels(n)
-    ) {
-      check(
-        validParam(p) &&
-        intForAll(n, statesDefined(init_states)) &&
-        intForAll(n, getActorDefined(init_getActor)) &&
-        intForAll2(n, n, ringChannels(n, init_messages)) 
-      )
-    } else check(false)
+      intForAll(n, statesDefined(init_states)) &&
+      intForAll(n, getActorDefined(init_getActor))
+    }
+  
     
-//     check (
-//     )
-    
-//     check (validParam(p) &&
-//       intForAll(n, statesDefined(init_states)) &&
-//       intForAll(n, getActorDefined(init_getActor)) &&
-//       intForAll2(n, ringChannels(n, init_messages)) &&
-//       networkInvariant(p, init_states, init_messages, init_getActor))
     
     VerifiedNetwork(p, init_states, init_messages, init_getActor)
   }
@@ -240,56 +223,74 @@ object ProtocolProof {
     0 <= i && i < n && (messages.contains(UID(i),UID(j)) ==> (j == increment(i,n)))
   }
   
+  def onlyOneLeader(n: BigInt, states: MMap[ActorId,State]) = {
+    require(intForAll(n, statesDefined(states)))
+    
+    (i: BigInt, j: BigInt) => {
+      0 <= i && i < n && elimForAll(n, statesDefined(states), i) &&
+      0 <= j && j < n && elimForAll(n, statesDefined(states), j) &&
+      ((states(UID(i)), states(UID(j))) match {
+        case (KnowLeader(a), KnowLeader(b)) => a == b
+        case _ => true
+      })
+      
+    }
+  }
+  
+  def onlyOneChannel(n: BigInt, messages:MMap[(ActorId,ActorId), List[Message]])(i: BigInt, j: BigInt) = {
+    0 <= i && i < n &&
+    0 <= j && j < n &&
+    (
+      messages.getOrElse((UID(i), UID(increment(i,n))), Nil()).isEmpty || 
+      messages.getOrElse((UID(j), UID(increment(j,n))), Nil()).isEmpty
+    )
+  }
+  
+  def noLeaderDuringElection(n: BigInt, states: MMap[ActorId, State], messages: MMap[(ActorId, ActorId), List[Message]]) = {
+    require(intForAll(n, statesDefined(states)))
+    
+  
+    (i: BigInt, j: BigInt) =>
+      0 <= i && i < n && elimForAll(n, statesDefined(states), i) &&
+      0 <= j && j < n && elimForAll(n, statesDefined(states), j) &&
+      (existsMessage(n, messages, Election(i)) ==> (
+        states(UID(i)) == Participant() &&
+        (states(UID(j)) match {
+          case KnowLeader(_) => false
+          case _ => true
+        })
+      ))
+  }
+  
+  
+  def everyOneParticipated(n: BigInt, states: MMap[ActorId, State], messages: MMap[(ActorId, ActorId), List[Message]]) = {
+    require(intForAll(n, statesDefined(states)))
+    
+  
+    (i: BigInt, j: BigInt) =>
+      0 <= i && i < n && elimForAll(n, statesDefined(states), i) &&
+      0 <= j && j < n && elimForAll(n, statesDefined(states), j) &&
+      (existsMessage(n, messages, Elected(i)) ==>  (
+        states(UID(i)) == KnowLeader(i) &&
+        (states(UID(j)) match {
+          case KnowLeader(i2) => i == i2
+          case NonParticipant() => false
+          case Participant() => true
+        })))
+  }
+  
   // This is an invariant of the class VerifiedNetwork
   def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
     val Params(n, starterProcess) = param
     validParam(param) && 
     intForAll(n, statesDefined(states)) &&
-    intForAll(n, getActorDefined(getActor))  &&
-    intForAll2(n, n, ringChannels(n, messages))
-//     intForAll2(n, (i: BigInt, j: BigInt) => 
-//     ) 
-//     intForAll(n, smallChannel(n, messages))
-      
-//     intForAll2(n, (i: BigInt, j: BigInt) => 
-//       0 <= i && i < n && elimForAll(n, (k: BigInt) => states.contains(UID(k)), i) &&
-//       0 <= j && j < n && elimForAll(n, (k: BigInt) => states.contains(UID(k)), j) &&
-//       ((states(UID(i)), states(UID(j))) match {
-//         case (KnowLeader(a), KnowLeader(b)) => a == b
-//         case _ => true
-//       })
-//     ) && 
-//     intForAll2(n, (i: BigInt, j: BigInt) => 
-//       0 <= i && i < n &&
-//       0 <= j && j < n &&
-//       (
-//         messages.getOrElse((UID(i), UID(increment(i,n))), Nil()).isEmpty || 
-//         messages.getOrElse((UID(i), UID(increment(j,n))), Nil()).isEmpty
-//       )
-//     ) &&
-//     intForAll2(n, (i: BigInt, j: BigInt) =>
-//       states.contains(UID(i)) &&
-//       states.contains(UID(j)) &&
-//       (existsMessage(n, messages, Election(i)) ==> (
-//         states(UID(i)) == Participant() &&
-//         (states(UID(j)) match {
-//           case KnowLeader(_) => false
-//           case _ => true
-//         })
-//       ))
-//     ) &&
-//     intForAll2(n, (i: BigInt, j: BigInt) =>
-//       states.contains(UID(i)) &&
-//       states.contains(UID(j)) &&
-//       (existsMessage(n, messages, Elected(i)) ==>  (
-//         states(UID(i)) == KnowLeader(i) &&
-//         (states(UID(j)) match {
-//           case KnowLeader(i2) => i == i2
-//           case NonParticipant() => false
-//           case Participant() => true
-//         })
-//       ))
-//     )
+    intForAll(n, getActorDefined(getActor)) /*&&
+    intForAll2(n, n, ringChannels(n, messages)) &&
+    intForAll(n, smallChannel(n, messages)) &&
+    intForAll2(n, n, onlyOneLeader(n, states)) &&
+    intForAll2(n, n, onlyOneChannel(n, messages)) &&
+    intForAll2(n, n, noLeaderDuringElection(n, states, messages)) &&
+    intForAll2(n, n, everyOneParticipated(n, states, messages))*/
   }
   
   def peekMessageEnsuresReceivePre(net: VerifiedNetwork, sender: ActorId, receiver: ActorId, m: Message) = {
