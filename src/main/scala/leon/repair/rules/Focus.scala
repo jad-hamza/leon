@@ -75,10 +75,7 @@ case object Focus extends PreprocessingRule("Focus") {
       }
     }
 
-    val fdSpec = {
-      val id = FreshIdentifier("res", fd.returnType)
-      Let(id, fd.body.get, application(fd.postOrTrue, Seq(id.toVariable)))
-    }
+    
 
     val TopLevelAnds(clauses) = p.ws
 
@@ -93,17 +90,15 @@ case object Focus extends PreprocessingRule("Focus") {
 
     def ws(g: Expr) = andJoin(Guide(g) +: wss)
 
-    def testCondition(cond: Expr) = {
-      val ndSpec = postMap {
-        case c if c eq cond => Some(not(cond))
-        case _ => None
-      }(fdSpec)
-      forAllTests(ndSpec, Map(), new AngelicEvaluator(new RepairNDEvaluator(hctx, program, cond)))
+    def testCondition(guide: IfExpr) = {
+      val IfExpr(cond, thenn, elze) = guide
+      val spec = letTuple(p.xs, IfExpr(Not(cond), thenn, elze), p.phi)
+      forAllTests(spec, Map(), new AngelicEvaluator(new RepairNDEvaluator(hctx, program, cond)))
     }
 
     guides.flatMap {
       case g @ IfExpr(c, thn, els) =>
-        testCondition(c) match {
+        testCondition(g) match {
           case Some(true) =>
             val cx = FreshIdentifier("cond", BooleanType)
             // Focus on condition
@@ -152,7 +147,7 @@ case object Focus extends PreprocessingRule("Focus") {
 
           val subP = if (existsFailing(cond.toClause, map, evaluator)) {
 
-            val vars = map.toSeq.map(_._1)
+            val vars = map.keys.toSeq
 
             val (p2e, _) = patternToExpression(c.pattern, scrut.getType)
 
@@ -163,46 +158,31 @@ case object Focus extends PreprocessingRule("Focus") {
                   case (Variable(i), to) if p.as.contains(i) => i -> to
                 }
                 if (res.size == as.size) res else Nil
+              case _ => Nil
             }).toMap
 
             if (substAs.nonEmpty) {
-              val subst: Expr => Expr = { e =>
-                replaceFromIDs(substAs, e)
-              }
+              val subst = replaceFromIDs(substAs, (_:Expr))
               // FIXME intermediate binders??
               val newAs = (p.as diff substAs.keys.toSeq) ++ vars
               val newPc = (p.pc merge prevPCSoFar) map subst
               val newWs = subst(ws(c.rhs))
               val newPhi = subst(p.phi)
-              val eb2 = qeb.filterIns(cond.toClause).removeIns(substAs.keySet)
-              val ebF: Seq[Expr] => List[Seq[Expr]] = { (ins: Seq[Expr]) =>
-                val eval = evaluator.eval(tupleWrap(vars map Variable), p.as.zip(ins).toMap ++ map)
-                eval.result.map( r => ins ++ unwrapTuple(r, vars.size)).toList
+              val eb2 = qeb.filterIns(cond.toClause)
+              val ebF: Seq[(Identifier, Expr)] => List[Seq[Expr]] = { (ins: Seq[(Identifier, Expr)]) =>
+                val eval = evaluator.eval(tupleWrap(vars map Variable), map ++ ins)
+                val insWithout = ins.collect{ case (id, v) if !substAs.contains(id) => v }
+                eval.result.map(r => insWithout ++ unwrapTuple(r, vars.size)).toList
               }
-              val newEb = eb2 flatMapIns ebF
+              val newEb = eb2.flatMapIns(ebF)
               Some(Problem(newAs, newWs, newPc, newPhi, p.xs, newEb))
             } else {
               // Filter tests by the path-condition
               val eb2 = qeb.filterIns(cond.toClause)
 
-              // Augment test with the additional variables and their valuations
-              val ebF: (Seq[Expr] => List[Seq[Expr]]) = { (e: Seq[Expr]) =>
-                val emap = (p.as zip e).toMap
-
-                evaluator.eval(tupleWrap(vars.map(map)), emap).result.map { r =>
-                  e ++ unwrapTuple(r, vars.size)
-                }.toList
-              }
-
-              val eb3 = if (vars.nonEmpty) {
-                eb2.flatMapIns(ebF)
-              } else {
-                eb2.eb
-              }
-
               val newPc = cond withBindings vars.map(id => id -> map(id))
 
-              Some(Problem(p.as, ws(c.rhs), p.pc merge newPc, p.phi, p.xs, eb3))
+              Some(Problem(p.as, ws(c.rhs), p.pc merge newPc, p.phi, p.xs, eb2))
             }
           } else {
             None

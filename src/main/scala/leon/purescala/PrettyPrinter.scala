@@ -86,6 +86,12 @@ class PrettyPrinter(opts: PrinterOptions,
 
       case Variable(id) =>
         p"$id"
+        
+      case Let(id, expr, SubString(Variable(id2), start, StringLength(Variable(id3)))) if id == id2 && id2 == id3 =>
+        p"$expr.substring($start)"
+        
+      case Let(id, expr, BigSubString(Variable(id2), start, StringLength(Variable(id3)))) if id == id2 && id2 == id3 =>
+        p"$expr.bigSubstring($start)"
 
       case Let(b,d,e) =>
         p"""|val $b = $d
@@ -189,8 +195,10 @@ class PrettyPrinter(opts: PrinterOptions,
       case RealToString(expr)     => p"$expr.toString"
       case StringConcat(lhs, rhs) => optP { p"$lhs + $rhs" }
     
-      case SubString(expr, start, end) => p"leon.lang.StrOps.substring($expr, $start, $end)"
-      case StringLength(expr)          => p"leon.lang.StrOps.length($expr)"
+      case SubString(expr, start, end) => p"$expr.substring($start, $end)"
+      case BigSubString(expr, start, end) => p"$expr.bigSubstring($start, $end)"
+      case StringLength(expr)          => p"$expr.length"
+      case StringBigLength(expr)       => p"$expr.bigLength"
 
       case IntLiteral(v)        => p"$v"
       case InfiniteIntegerLiteral(v) => p"$v"

@@ -282,10 +282,19 @@ abstract class RecursiveEvaluator(ctx: LeonContext, prog: Program, val bank: Eva
         case (le,re) => throw EvalError(typeErrorMsg(le, StringType))
       }
     case StringLength(a) => e(a) match {
+      case StringLiteral(a) => IntLiteral(a.length)
+      case res => throw EvalError(typeErrorMsg(res, Int32Type))
+    }
+    case StringBigLength(a) => e(a) match {
       case StringLiteral(a) => InfiniteIntegerLiteral(a.length)
       case res => throw EvalError(typeErrorMsg(res, IntegerType))
     }
     case SubString(a, start, end) => (e(a), e(start), e(end)) match {
+      case (StringLiteral(a), IntLiteral(b), IntLiteral(c))  =>
+        StringLiteral(a.substring(b, c))
+      case res => throw EvalError(typeErrorMsg(res._1, StringType))
+    }
+    case BigSubString(a, start, end) => (e(a), e(start), e(end)) match {
       case (StringLiteral(a), InfiniteIntegerLiteral(b), InfiniteIntegerLiteral(c))  =>
         StringLiteral(a.substring(b.toInt, c.toInt))
       case res => throw EvalError(typeErrorMsg(res._1, StringType))

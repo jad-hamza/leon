@@ -68,6 +68,15 @@ package object lang {
       (res: A) => byExample(input, res)
     }
   }
+  
+  implicit class StringDecorations(val underlying: String) {
+    @ignore @inline
+    def bigLength() = BigInt(underlying.length)
+    @ignore @inline
+    def bigSubstring(start: BigInt): String = underlying.substring(start.toInt)
+    @ignore @inline
+    def bigSubstring(start: BigInt, end: BigInt): String = underlying.substring(start.toInt, end.toInt)
+  }
 
   @ignore
   object BigInt {
