@@ -40,7 +40,7 @@ object Protocol {
       require(initPre(this))
     
       !! (actor1,Increment())
-    }
+    } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
     
     
     def receive(sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
@@ -96,6 +96,7 @@ object ProtocolProof {
   
   
   def validGetActor(net: VerifiedNetwork, id: ActorId) = {
+    require(networkInvariant(net.param, net.states, net.messages, net.getActor))
     
     net.getActor.contains(id)
   } holds
@@ -114,7 +115,8 @@ object ProtocolProof {
     }
     
     VerifiedNetwork(NoParam(), MMap(states), MMap(), MMap(getActor))
-  }
+  } ensuring(res => networkInvariant(res.param, res.states, res.messages, res.getActor))
+
   
   def validParam(p: Parameter) = true
   
@@ -150,6 +152,7 @@ object ProtocolProof {
     
     
   def countingActorReceivePre(receiver: Actor, sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
+    require(networkInvariant(net.param, net.states, net.messages, net.getActor))
     (sender, m, receiver.state) match {
       case (ActorId1(), Increment(), CCounter(i)) =>
     
@@ -187,6 +190,7 @@ object ProtocolProof {
   }
   
   def checkingActorReceivePre(receiver: Actor, sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
+    require(networkInvariant(net.param, net.states, net.messages, net.getActor))
     sender == ActorId1() && 
     ((net getState(actor1), m, net getState(actor2)) match {
       case (CCounter(i), Deliver(j),VCounter(k)) =>
@@ -198,13 +202,15 @@ object ProtocolProof {
   }
   
   def receivePre(a: Actor, sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
+    networkInvariant(net.param, net.states, net.messages, net.getActor) && (
     a match {
       case CountingActor(_) => countingActorReceivePre(a, sender, m)
       case CheckingActor(_) => checkingActorReceivePre(a, sender, m)
-    }
+    })
   }
   
   def peekMessageEnsuresReceivePre(n: VerifiedNetwork, sender: ActorId, receiver: ActorId, m: Message) = {
+    require(networkInvariant(n.param, n.states, n.messages, n.getActor))
     
     val sms = n.messages.getOrElse((sender, receiver), Nil())
     
@@ -236,6 +242,7 @@ object ProtocolProof {
   
   
   def initPre(a: Actor)(implicit net: VerifiedNetwork) = {
+    networkInvariant(net.param, net.states, net.messages, net.getActor) && 
     appendIncrement(net.messages.getOrElse((actor1,actor1), Nil()))
   }
   

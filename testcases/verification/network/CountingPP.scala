@@ -3,6 +3,7 @@ package distribution
 import leon.collection._
 
 import Protocol._
+import ProtocolProof._
 import Networking._
 import FifoNetwork._
 
@@ -61,6 +62,7 @@ object PrettyPrinting {
   }
   
   def networkToString(n: VerifiedNetwork): String = {
+    require(networkInvariant(n.param, n.states, n.messages, n.getActor))
     val VerifiedNetwork(_, states, messages, getActor) = n
     
     "\n\n" + statesToString(states) + "\n\n" + 

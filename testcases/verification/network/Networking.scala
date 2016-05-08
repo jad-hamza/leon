@@ -25,7 +25,6 @@ object Networking {
     val myId: ActorId
     
     def !!(receiver: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
-      require(networkInvariant(net.param, net.states, net.messages.updated((myId,receiver), net.messages.getOrElse((myId,receiver),Nil()) :+ m), net.getActor))
       net send (myId,receiver,m)
     } 
     
@@ -38,7 +37,6 @@ object Networking {
     }
     
     def update(s: State)(implicit net: VerifiedNetwork) = {
-      require(networkInvariant(net.param, net.states.updated(myId,s), net.messages, net.getActor))
       net.updateState(myId, s)
     }
     
@@ -53,6 +51,7 @@ object Networking {
     
   
     def loop(schedule: List[(ActorId,ActorId,Message)]): Unit = {
+      require(networkInvariant(net.param, net.states, net.messages, net.getActor))
 
       schedule match {
         case Nil() => ()
@@ -66,6 +65,8 @@ object Networking {
     
     
     def initializationLoop(initSchedule: List[ActorId]): Unit = {
+      require(networkInvariant(net.param, net.states, net.messages, net.getActor))
+
       initSchedule match {
         case Nil() => ()
         case Cons(x,xs) => 

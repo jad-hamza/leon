@@ -283,14 +283,14 @@ object ProtocolProof {
   def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
     val Params(n, starterProcess) = param
     validParam(param) && 
-    intForAll(n, statesDefined(states)) &&
-    intForAll(n, getActorDefined(getActor)) /*&&
-    intForAll2(n, n, ringChannels(n, messages)) &&
-    intForAll(n, smallChannel(n, messages)) &&
-    intForAll2(n, n, onlyOneLeader(n, states)) &&
-    intForAll2(n, n, onlyOneChannel(n, messages)) &&
-    intForAll2(n, n, noLeaderDuringElection(n, states, messages)) &&
-    intForAll2(n, n, everyOneParticipated(n, states, messages))*/
+    intForAll(n, getActorDefined(getActor))  
+//     intForAll(n, statesDefined(states)) 
+//     intForAll2(n, n, ringChannels(n, messages)) &&
+//     intForAll(n, smallChannel(n, messages)) &&
+//     intForAll2(n, n, onlyOneLeader(n, states)) &&
+//     intForAll2(n, n, onlyOneChannel(n, messages)) &&
+//     intForAll2(n, n, noLeaderDuringElection(n, states, messages)) &&
+//     intForAll2(n, n, everyOneParticipated(n, states, messages))
   }
   
   def peekMessageEnsuresReceivePre(net: VerifiedNetwork, sender: ActorId, receiver: ActorId, m: Message) = {
@@ -309,8 +309,7 @@ object ProtocolProof {
         val messages2 = net.messages.updated((sender, receiver), xs)
         elimForAll(n, getActorDefined(net.getActor), ureceiver) &&
         net.getActor.contains(receiver) && 
-        net.getActor(receiver) == Process(receiver) &&
-        networkInvariant(net.param, net.states, messages2, net.getActor)
+        net.getActor(receiver) == Process(receiver)
       case _ => 
         true
     })
@@ -349,10 +348,12 @@ object ProtocolProof {
   }
   
   def receivePre(a: Actor, sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
+
     
     val UID(myuid) = a.myId
     val Params(n, starterProcess) = net.param
     val states = net.states
+    val messages = net.messages
   
     0 <= myuid && myuid < n  &&
     {
@@ -365,31 +366,31 @@ object ProtocolProof {
 //               update (Participant())
 //               !! (nextProcess, Election(uid))
               val newStates = states.updated(a.myId, Participant())
-              val channel = net.messages.getOrElse((a.myId, nextProcess), Nil())
+              val channel = messages.getOrElse((a.myId, nextProcess), Nil())
               val newChannel = channel :+ Election(uid)
-              val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
-              true
+              val newMessages = messages.updated((a.myId, nextProcess), newChannel)
 
-/*              intForAll(n, statesDefined(states)) &&
-              statesStillDefined(n, states, a.myId, Participant())  &&
-              intForAll(n, statesDefined(states.updated(a.myId, Participant()))) &&
-              networkInvariant(net.param, newStates, net.messages, net.getActor)*/ 
+              true
+//               intForAll(n, statesDefined(states)) &&
+//               statesStillDefined(n, states, a.myId, Participant())  &&
+//               intForAll(n, statesDefined(states.updated(a.myId, Participant()))) &&
+//               networkInvariant(net.param, states.updated(a.myId, Participant()), messages, net.getActor) 
 //               &&
 //               networkInvariant(net.param, newStates, newMessages, net.getActor)
             } 
             else if (uid < myuid) {
 //             update (Participant())
 //             !! (nextProcess, Election(myuid))
-              val newStates = net.states.updated(a.myId, Participant())
-              val channel = net.messages.getOrElse((a.myId, nextProcess), Nil())
-              val newChannel = channel :+ Election(myuid)
-              val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
+              val newStates = states.updated(a.myId, Participant())
+              val channel = messages.getOrElse((a.myId, nextProcess), Nil())
+              val newChannel = channel :+ Election(uid)
+              val newMessages = messages.updated((a.myId, nextProcess), newChannel)
 
               true
-//               intForAll(n, statesDefined(states))  &&
-//               statesStillDefined(n, states, a.myId, Participant()) &&
-//               intForAll(n, statesDefined(newStates)) &&
-//               networkInvariant(net.param, newStates, net.messages, net.getActor) 
+//               intForAll(n, statesDefined(states)) &&
+//               statesStillDefined(n, states, a.myId, Participant())  &&
+//               intForAll(n, statesDefined(states.updated(a.myId, Participant()))) &&
+//               networkInvariant(net.param, states.updated(a.myId, Participant()), messages, net.getActor) 
 //               &&
 //               networkInvariant(net.param, newStates, newMessages, net.getActor)
             }
@@ -411,16 +412,18 @@ object ProtocolProof {
             } else if (uid == myuid) {
 //               update (KnowLeader(uid))
 //               !! (nextProcess, Elected(myuid))
-              val newStates = net.states.updated(a.myId, KnowLeader(uid))
-              val channel = net.messages.getOrElse((a.myId, nextProcess), Nil())
+              val newStates = states.updated(a.myId, KnowLeader(uid))
+              val channel = messages.getOrElse((a.myId, nextProcess), Nil())
               val newChannel = channel :+ Elected(myuid)
-              val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
+              val newMessages = messages.updated((a.myId, nextProcess), newChannel)
 
               true
-//               intForAll(n, statesDefined(states))  &&
+//               intForAll(n, statesDefined(states)) &&
 //               statesStillDefined(n, states, a.myId, KnowLeader(uid)) &&
-//               intForAll(n, statesDefined(newStates)) &&
-//               networkInvariant(net.param, newStates, net.messages, net.getActor) 
+//               intForAll(n, statesDefined(states.updated(a.myId, KnowLeader(uid)))) &&
+//               networkInvariant(net.param, states, net.messages, net.getActor) &&
+//               intForAll(n, getActorDefined(net.getActor))
+//               networkInvariant(net.param, states.updated(a.myId, KnowLeader(uid)), net.messages, net.getActor) 
 //               &&
 //               networkInvariant(net.param, newStates, newMessages, net.getActor)
             } else {
@@ -436,16 +439,16 @@ object ProtocolProof {
           case (id, Elected(uid), Participant()) => {
 //               update (KnowLeader(uid))
 //               !! (nextProcess, Elected(uid))
-              val newStates = net.states.updated(a.myId, KnowLeader(uid))
-              val channel = net.messages.getOrElse((a.myId, nextProcess), Nil())
+              val newStates = states.updated(a.myId, KnowLeader(uid))
+              val channel = messages.getOrElse((a.myId, nextProcess), Nil())
               val newChannel = channel :+ Elected(uid)
               val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
               
               true
 //               intForAll(n, statesDefined(states)) &&
 //               statesStillDefined(n, states, a.myId, KnowLeader(uid)) &&
-//               intForAll(n, statesDefined(newStates)) &&
-//               networkInvariant(net.param, newStates, net.messages, net.getActor) 
+//               intForAll(n, statesDefined(states.updated(a.myId, KnowLeader(uid)))) &&
+//               networkInvariant(net.param, states.updated(a.myId, KnowLeader(uid)), messages, net.getActor) 
 //               &&
 //               networkInvariant(net.param, newStates, newMessages, net.getActor)
           }
@@ -466,7 +469,7 @@ object ProtocolProof {
           }
         })
     }
-  }
+  } 
   
   def validId(net: VerifiedNetwork, id: ActorId) = {
     val UID(uid) = id

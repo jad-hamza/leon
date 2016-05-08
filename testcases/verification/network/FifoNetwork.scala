@@ -15,17 +15,12 @@ object FifoNetwork  {
       var states: MMap[ActorId,State], 
       var messages: MMap[(ActorId,ActorId),List[Message]], 
       getActor: MMap[ActorId,Actor])  {
-    require(networkInvariant(param, states, messages, getActor))
         
     def send(sender: ActorId, receiver: ActorId, m: Message): Unit = {
-      require(networkInvariant(param, states, messages.updated((sender,receiver), messages.getOrElse((sender,receiver),Nil()) :+ m), getActor))
-      
       messages = messages.updated((sender,receiver), messages.getOrElse((sender,receiver),Nil()) :+ m)
     } 
     
     def updateState(actor: ActorId, state: State): Unit = {
-      require(networkInvariant(param, states.updated(actor,state),messages,getActor))
-      
       states = states.updated(actor,state)
     } 
     
@@ -36,7 +31,10 @@ object FifoNetwork  {
     
     
     def applyMessage(sender: ActorId, receiver: ActorId, m: Message): Boolean = {
-      require(peekMessageEnsuresReceivePre(this, sender, receiver, m))
+      require(
+        networkInvariant(param, states, messages, getActor) &&
+        peekMessageEnsuresReceivePre(this, sender, receiver, m)
+      )
       
       val sms = messages.getOrElse((sender,receiver), Nil())
       
@@ -52,7 +50,7 @@ object FifoNetwork  {
           false
       }
       
-    } ensuring(_ => networkInvariant(param, states, messages, getActor))
+    } ensuring(networkInvariant(param, states, messages, getActor))
   }
   
 }
