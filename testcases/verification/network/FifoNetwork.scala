@@ -33,6 +33,8 @@ object FifoNetwork  {
     def applyMessage(sender: ActorId, receiver: ActorId, m: Message): Boolean = {
       require(
         networkInvariant(param, states, messages, getActor) &&
+        validId(this, sender) && 
+        validId(this, receiver) &&
         peekMessageEnsuresReceivePre(this, sender, receiver, m)
       )
       

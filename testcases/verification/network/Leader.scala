@@ -32,11 +32,11 @@ object Protocol {
   
   def init_states_fun(id: ActorId): Option[State] = Some(NonParticipant())
   def init_getActor_fun(id: ActorId): Option[Actor] = Some(Process(id))
-  def init_Messages_fun(ids: (ActorId,ActorId)): Option[List[Message]] = None()
+  def init_messages_fun(ids: (ActorId,ActorId)): Option[List[Message]] = None()
   
   val init_states = MMap(init_states_fun)
   val init_getActor = MMap(init_getActor_fun)
-  val init_messages = MMap(init_Messages_fun)
+  val init_messages = MMap(init_messages_fun)
   
 
   def makeNetwork(p: Parameter) = {
@@ -45,8 +45,10 @@ object Protocol {
       validParam(p) &&
       init_statesDefined(n) && 
       init_getActorDefined(n) && 
+      init_ringChannels(n) && 
       intForAll(n, statesDefined(init_states)) &&
-      intForAll(n, getActorDefined(init_getActor))
+      intForAll(n, getActorDefined(init_getActor)) &&
+      intForAll2(n, n, ringChannels(n, init_messages))
     }
   
     

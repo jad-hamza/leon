@@ -41,13 +41,13 @@ object IntQuantifiers {
   } holds
   
   def elimForAll2(n: BigInt, m: BigInt, p: (BigInt, BigInt) => Boolean, i: BigInt, j: BigInt): Boolean = {
-    require(intForAll2(n, m, p) && i >= 0 && i < n && 0 <= j && j < m)
+    require(intForAll2(n, m, p) && 0 <= i && i < n && 0 <= j && j < m)
     
-    if (i == n-1 && j == m-1) true
-    else if (i < n-1) elimForAll2(n-1, m, p, i, j)
-    else elimForAll2(n, m-1, p, i, j)
+    if (i == n-1 && j == m-1) p(i,j)
+    else if (i < n-1) elimForAll2(n-1, m, p, i, j) && p(i,j)
+    else elimForAll2(n, m-1, p, i, j) && p(i,j)
 
-  } ensuring(_ => p(i,j))
+  } holds
   
   
   def elimExists(n: BigInt, p: BigInt => Boolean): BigInt = {
