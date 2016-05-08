@@ -85,7 +85,7 @@ object Protocol {
 }
 
 
-// This object contains lemma and auxialiary functions used in the proofs
+// This object contains lemma and auxiliary functions used in the proofs
 
 object ProtocolProof {
   import Protocol._

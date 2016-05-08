@@ -55,7 +55,6 @@ object PrettyPrinting {
   
   
   def messagesToString(n: BigInt, m: MMap[(ActorId,ActorId), List[Message]]): String = {
-    require(n > 0)
   
     def loop(i: BigInt) : String = {
       require(0 <= i && i <= n)
@@ -64,7 +63,9 @@ object PrettyPrinting {
         actorIdToString(UID(i)) + "," + actorIdToString(UID(increment(i,n))) + ": " + messageListToString(m.getOrElse((UID(i),UID(increment(i,n))), Nil())) + "\n" + loop(i+1)
     }
     
-    loop(0)
+    if (n >= 0)
+      loop(0)
+    else ""
   }
   
   def actorToString(a: Actor) = {
@@ -74,7 +75,6 @@ object PrettyPrinting {
   }
   
   def getActorToString(n: BigInt, getActor: MMap[ActorId,Actor]) = {
-    require(n >= 0)
     
     def loop(i: BigInt) : String = {
       require(0 <= i && i <= n)
@@ -85,8 +85,10 @@ object PrettyPrinting {
         "getActor(" + i + ") = Nothing\n" + loop(i+1)
       }
     }
-  
-    loop(0)
+    
+    if (n >= 0)
+      loop(0)
+    else ""
   }
   
   def networkToString(net: VerifiedNetwork): String = {

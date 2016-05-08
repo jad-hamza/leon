@@ -43,14 +43,17 @@ object FifoNetwork  {
         case Cons(x, xs) if (x == m) => 
           val messages2 = messages.updated((sender,receiver), xs)
           messages = messages2
+          check(networkInvariant(param, states, messages, getActor))
           getActor(receiver).receive(sender,m)(this)
+          check(networkInvariant(param, states, messages, getActor))
           true
           
         case _ => 
           false
       }
       
-    } ensuring(networkInvariant(param, states, messages, getActor))
+    } 
+//     ensuring(networkInvariant(param, states, messages, getActor))
   }
   
 }
