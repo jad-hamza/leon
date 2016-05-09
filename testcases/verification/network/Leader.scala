@@ -30,33 +30,6 @@ object Protocol {
   case class Params(n: BigInt, starterProcess: BigInt) extends Parameter
   
   
-  def init_states_fun(id: ActorId): Option[State] = Some(NonParticipant())
-  def init_getActor_fun(id: ActorId): Option[Actor] = Some(Process(id))
-  def init_messages_fun(ids: (ActorId,ActorId)): Option[List[Message]] = None()
-  
-  val init_states = MMap(init_states_fun)
-  val init_getActor = MMap(init_getActor_fun)
-  val init_messages = MMap(init_messages_fun)
-  
-
-  def makeNetwork(p: Parameter) = {
-    require {
-      val Params(n, starterProcess) = p
-      validParam(p) &&
-      init_statesDefined(n) && 
-      init_getActorDefined(n) && 
-      init_ringChannels(n) && 
-      intForAll(n, statesDefined(init_states)) &&
-      intForAll(n, getActorDefined(init_getActor)) &&
-      intForAll2(n, n, ringChannels(n, init_messages))
-    }
-  
-    
-    
-    VerifiedNetwork(p, init_states, init_messages, init_getActor)
-  } ensuring(res => networkInvariant(res.param, res.states, res.messages, res.getActor))
-  
-  
   def increment(i: BigInt, n: BigInt): BigInt = {
     require(0 <= i && i < n)
     if (i < n-1) i+1

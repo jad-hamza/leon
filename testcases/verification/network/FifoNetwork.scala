@@ -54,8 +54,7 @@ object FifoNetwork  {
           false
       }
       
-    } 
-//     ensuring(networkInvariant(param, states, messages, getActor))
+    } ensuring(networkInvariant(param, states, messages, getActor))
   }
   
 }
