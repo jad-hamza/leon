@@ -80,6 +80,29 @@ object Protocol {
     
   }
   
+  @extern
+  def printing(s: String) = {
+    println(s)
+  }
+  
+  @ignore
+  def main(args: Array[String]) = {
+    val a1 = CountingActor(actor1)
+    val a2 = CheckingActor(actor2)
+    
+    runActors(NoParam(), List(actor1, actor2), List(
+      (actor1, actor1, Increment()),
+      (actor1, actor1, Increment()),
+      (actor1, actor1, Increment()),
+      (actor1, actor1, Increment()),
+      (actor1, actor1, Increment()),
+      (actor1, actor2, Deliver(1)),
+      (actor1, actor2, Deliver(2)),
+      (actor1, actor2, Deliver(3)),
+      (actor1, actor2, Deliver(4)),
+      (actor1, actor2, Deliver(5))
+    ))
+  }
 
   
 }
