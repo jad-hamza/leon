@@ -412,6 +412,33 @@ object ExprOps extends GenTreeOps[Expr] {
 
     def simplerLet(t: Expr): Option[Expr] = t match {
 
+      /* Untangle */
+      case Let(i1, Let(i2, e2, b2), b1) =>
+        Some(Let(i2, e2, Let(i1, b2, b1)))
+
+      case Let(i1, LetTuple(is2, e2, b2), b1) =>
+        Some(letTuple(is2, e2, Let(i1, b2, b1)))
+
+      case LetTuple(ids1, Let(id2, e2, b2), b1) =>
+        Some(Let(id2, e2, letTuple(ids1, b2, b1)))
+
+      case LetTuple(ids1, LetTuple(ids2, e2, b2), b1) =>
+        Some(letTuple(ids2, e2, letTuple(ids1, b2, b1)))
+
+      // Untuple
+      case Let(id, Tuple(es), b) =>
+        val ids = es.zipWithIndex.map { case (e, ind) =>
+          FreshIdentifier(id + (ind + 1).toString, e.getType, true)
+        }
+        val theMap: Map[Expr, Expr] = es.zip(ids).zipWithIndex.map {
+          case ((e, subId), ind) => TupleSelect(Variable(id), ind + 1) -> Variable(subId)
+        }.toMap
+
+        val replaced0 = replace(theMap, b)
+        val replaced  = replace(Map(Variable(id) -> Tuple(ids map Variable)), replaced0)
+
+        Some(letTuple(ids, Tuple(es), replaced))
+
       case Let(i, e, b) if freeComputable(e) && isPurelyFunctional(e) =>
         // computation is very quick and code easy to read, always inline
         Some(replaceFromIDs(Map(i -> e), b))
@@ -432,7 +459,7 @@ object ExprOps extends GenTreeOps[Expr] {
         }
 
       case LetTuple(ids, Tuple(elems), body) =>
-        Some(ids.zip(elems).foldRight(body) { case ((id, elem), bd) => Let(id, elem, body) })
+        Some(ids.zip(elems).foldRight(body) { case ((id, elem), bd) => Let(id, elem, bd) })
 
       /*case LetPattern(patt, e0, body) if isPurelyFunctional(e0) =>
         // Will turn the match-expression with a single case into a list of lets.

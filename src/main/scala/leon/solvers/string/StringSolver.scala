@@ -376,7 +376,7 @@ object StringSolver {
       }
       constantPropagate(p).map(ps => {
         val newP = if(ps._2.nonEmpty) reduceProblem(ps._2)(p) else p
-        (ps._1, s ++ ps._2)
+        (newP, s ++ ps._2)
       })
     }
   }
@@ -651,7 +651,7 @@ object StringSolver {
   /** Returns all subsets of i elements of a sequence. */
   def take[A](i: Int, of: Seq[A]): Stream[Seq[A]] = {
     if(i > of.size || i < 0) Stream.empty
-    if(i == of.size) Stream(of)
+    else if(i == of.size) Stream(of)
     else if(i == 0) Stream(Seq.empty)
     else {
       take(i - 1, of.tail).map(of.head +: _) #::: take(i, of.tail)
