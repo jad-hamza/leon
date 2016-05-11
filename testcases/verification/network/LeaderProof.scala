@@ -5,6 +5,7 @@ import FifoNetwork._
 import Networking._
 import IntQuantifiers._
 import Protocol._
+import ListUtils._
 
 import leon.lang._
 import leon.collection._
@@ -275,6 +276,61 @@ object ProtocolProof {
   
   
   /**
+   * Invariant stating that if there is an Election message in transit, then 
+   * no one can know the leader
+   */
+  
+  def noLeaderDuringElection(n: BigInt, states: MMap[ActorId, State], messages: MMap[(ActorId, ActorId), List[Message]]) = {
+    require(intForAll(n, statesDefined(states)))
+    
+  
+    (i: BigInt) =>
+      0 <= i && i < n && elimForAll(n, statesDefined(states), i) &&
+      (existsMessage(n, messages, isElectionMessage) ==> !isKnowLeaderState(states(UID(i))))
+  }
+  
+  def init_noLeaderDuringElection_aux(u: BigInt, n: BigInt): Boolean =  {
+    require(u <= n)
+    
+    if (u <= 0)
+      intForAll(u, noLeaderDuringElection(n, init_states, init_messages))
+    else {
+      nothingExists(n, init_messages, isElectionMessage) &&
+      !existsMessage(n, init_messages, isElectionMessage) &&
+      init_statesDefined(n) &&
+      noLeaderDuringElection(n, init_states, init_messages)(u-1) &&
+      init_noLeaderDuringElection_aux(u-1, n) && 
+      intForAll(u, noLeaderDuringElection(n, init_states, init_messages))
+    }
+  } holds
+  
+  def init_noLeaderDuringElection(n: BigInt) = init_noLeaderDuringElection_aux(n,n)
+  
+  def stillnoLeaderDuringElection(
+      n: BigInt, u: BigInt,
+      states: MMap[ActorId,State], 
+      messages: MMap[(ActorId,ActorId),List[Message]], 
+      usender: BigInt, ureceiver: BigInt, tt: List[Message]): Boolean = {
+    
+    require(
+      u <= n && 
+      0 <= usender && usender < n &&
+      0 <= ureceiver && ureceiver < n &&
+      intForAll(n, statesDefined(states)) &&
+      intForAll(n, noLeaderDuringElection(n, states, messages)) && 
+      ureceiver == increment(usender, n) &&
+      !contains(tt, isElectionMessage)
+    )
+    
+    if (u <= 0) 
+      intForAll(u, noLeaderDuringElection(n, states, messages.updated((UID(usender),UID(ureceiver)), tt)))
+    else 
+      stillnoLeaderDuringElection(n, u-1, states, messages, usender, ureceiver, tt) &&
+      intForAll(u, noLeaderDuringElection(n, states, messages.updated((UID(usender),UID(ureceiver)), tt)))
+    
+  } holds
+  
+  /**
    * Invariant stating if two people know the leader, they must agree on
    * the identity
    */
@@ -293,44 +349,28 @@ object ProtocolProof {
     }
   }
   
-  def noLeaderDuringElection(n: BigInt, states: MMap[ActorId, State], messages: MMap[(ActorId, ActorId), List[Message]]) = {
-    require(intForAll(n, statesDefined(states)))
-    
-  
-    (i: BigInt, j: BigInt) =>
-      0 <= i && i < n && elimForAll(n, statesDefined(states), i) &&
-      0 <= j && j < n && elimForAll(n, statesDefined(states), j) &&
-      (existsMessage(n, messages, Election(i)) ==> (
-        states(UID(i)) == Participant() &&
-        (states(UID(j)) match {
-          case KnowLeader(_) => false
-          case _ => true
-        })
-      ))
-  }
-  
   /**
    * Invariant stating that if someone knows the leader, then there are no 
    * NonParticipant's
    */
   
   
-  def everyOneParticipated(n: BigInt, states: MMap[ActorId, State], messages: MMap[(ActorId, ActorId), List[Message]]) = {
-    require(intForAll(n, statesDefined(states)))
-    
-  
-    (i: BigInt, j: BigInt) =>
-      0 <= i && i < n && elimForAll(n, statesDefined(states), i) &&
-      0 <= j && j < n && elimForAll(n, statesDefined(states), j) &&
-      (existsMessage(n, messages, Elected(i)) ==>  (
-        states(UID(i)) == KnowLeader(i) &&
-        (states(UID(j)) match {
-          case KnowLeader(i2) => i == i2
-          case NonParticipant() => false
-          case Participant() => true
-        })))
-  }
-  
+//   def everyOneParticipated(n: BigInt, states: MMap[ActorId, State], messages: MMap[(ActorId, ActorId), List[Message]]) = {
+//     require(intForAll(n, statesDefined(states)))
+//     
+//   
+//     (i: BigInt, j: BigInt) =>
+//       0 <= i && i < n && elimForAll(n, statesDefined(states), i) &&
+//       0 <= j && j < n && elimForAll(n, statesDefined(states), j) &&
+//       (existsMessage(n, messages, Elected(i)) ==>  (
+//         states(UID(i)) == KnowLeader(i) &&
+//         (states(UID(j)) match {
+//           case KnowLeader(i2) => i == i2
+//           case NonParticipant() => false
+//           case Participant() => true
+//         })))
+//   }
+//   
   
   
   /**
@@ -405,12 +445,14 @@ object ProtocolProof {
       init_smallChannel(n) && 
       init_emptyChannel(n) && 
       init_onlyOneChannel(n) && 
+      init_noLeaderDuringElection(n) && 
       intForAll(n, statesDefined(init_states)) &&
       intForAll(n, getActorDefined(init_getActor)) &&
       intForAll2(n, n, ringChannels(n, init_messages)) &&
       intForAll(n, smallChannel(n, init_messages)) &&
       intForAll(n, emptyChannel(n, init_messages)) &&
-      intForAll2(n, n, onlyOneChannel(n, init_messages))
+      intForAll2(n, n, onlyOneChannel(n, init_messages)) &&
+      intForAll(n, noLeaderDuringElection(n, init_states, init_messages))
     }
     
     VerifiedNetwork(p, init_states, init_messages, init_getActor)
@@ -428,9 +470,9 @@ object ProtocolProof {
     intForAll(n, statesDefined(states)) &&
     intForAll2(n, n, ringChannels(n, messages)) &&
     intForAll(n, smallChannel(n, messages)) &&
-    intForAll2(n, n, onlyOneChannel(n, messages))
+    intForAll2(n, n, onlyOneChannel(n, messages)) &&
+    intForAll(n, noLeaderDuringElection(n, states, messages))
 //     intForAll2(n, n, onlyOneLeader(n, states)) &&
-//     intForAll2(n, n, noLeaderDuringElection(n, states, messages)) &&
 //     intForAll2(n, n, everyOneParticipated(n, states, messages))
   }
   
@@ -442,7 +484,8 @@ object ProtocolProof {
       intForAll(n, statesDefined(states)) &&
       intForAll2(n, n, ringChannels(n, messages)) &&
       intForAll(n, smallChannel(n, messages)) &&
-      intForAll2(n, n, onlyOneChannel(n, messages))
+      intForAll2(n, n, onlyOneChannel(n, messages)) &&
+      intForAll(n, noLeaderDuringElection(n, states, messages))
     }
     
     networkInvariant(param, states, messages, getActor)
@@ -480,14 +523,17 @@ object ProtocolProof {
         stillSmallChannel(n, n, net.messages, usender, ureceiver, xs) &&
         channelsBecomeEmpty(n, n, net.messages, usender, ureceiver) &&
         stillOneChannel(n, n, n, net.messages, usender, ureceiver, xs) &&
+        stillnoLeaderDuringElection(n, n, net.states, net.messages, usender, ureceiver, xs) &&
         intForAll(n, emptyChannel(n, messages2)) &&
         intForAll(n, statesDefined(net.states)) && 
         intForAll(n, getActorDefined(net.getActor)) &&
         intForAll2(n, n, ringChannels(n, messages2)) && 
         intForAll(n, smallChannel(n, messages2)) &&
-        intForAll2(n, n, onlyOneChannel(n, messages2)) &&
-        makeNetworkInvariant(net.param, net.states, messages2, net.getActor) &&
-        networkInvariant(net.param, net.states, messages2, net.getActor)
+        intForAll2(n, n, onlyOneChannel(n, messages2)) 
+//         &&
+        
+//         makeNetworkInvariant(net.param, net.states, messages2, net.getActor) &&
+//         networkInvariant(net.param, net.states, messages2, net.getActor)
       case _ => 
         true
     }
@@ -655,10 +701,43 @@ object ProtocolProof {
     }
   } 
   
-  
-  def existsMessage(n: BigInt,  messages: MMap[(ActorId,ActorId),List[Message]], m: Message) = {
+  def hasMessage(n: BigInt, messages: MMap[(ActorId,ActorId),List[Message]], p: Message => Boolean) = {
     require(n >= 0)
-    intExists(n, (i: BigInt) => 0 <= i && i < n && messages.getOrElse((UID(i), UID(increment(i,n))), Nil()).contains(m))
+      
+    (i: BigInt) => 
+      0 <= i && i < n && 
+      contains(messages.getOrElse((UID(i), UID(increment(i,n))), Nil()), p)
+  }
+  
+  def isElectionMessage(m: Message) = {
+    m match {
+      case Election(_) => true
+      case _ => false
+    }
+  }
+  
+  def isKnowLeaderState(s: State) = {
+    s match {
+      case KnowLeader(_) => true
+      case _ => false
+    }
+  }
+  
+  def existsMessage(n: BigInt,  messages: MMap[(ActorId,ActorId),List[Message]], p: Message => Boolean) = {
+    require(n >= 0)
+    intExists(n, hasMessage(n, messages, p))
   }
 
+  
+  def nothingExists(n: BigInt, messages: MMap[(ActorId,ActorId),List[Message]], p: Message => Boolean): Boolean = {
+    require(n >= 0 && intForAll(n, emptyChannel(n, messages)))
+    
+    if (existsMessage(n, messages, p)) {
+      val i = elimExists(n, hasMessage(n, messages, p))
+      elimForAll(n, emptyChannel(n, messages), i) &&
+      false
+    } 
+    else 
+      !existsMessage(n, messages, p)
+  } holds
 }
