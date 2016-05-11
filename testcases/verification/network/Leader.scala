@@ -107,6 +107,23 @@ object Protocol {
     } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
     
   }
+    
+    
+  @ignore
+  def main(args: Array[String]) = {
+    val n = BigInt(2)
+    def messages_fun(ids: (ActorId,ActorId)) = ids match {
+      case (UID(i), UID(j)) => 
+        if (i == 0 && j == 1) Some(List[Message](Election(0)))
+        else if (i == 1 && j == 0) Some(List[Message](Election(0)))
+        else None[List[Message]]()
+    }
+    val messages = MMap[(ActorId,ActorId), List[Message]](messages_fun _)
+    val usender = BigInt(0)
+    val ureceiver = BigInt(1)
+    
+    println(channelsBecomeEmpty(n, n, messages, usender, ureceiver))
+  }
   
 }
 

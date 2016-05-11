@@ -44,7 +44,7 @@ object Networking {
   }
   
   
-  def runActors(p: Parameter, actorIds: List[ActorId], schedule: List[(ActorId,ActorId,Message)]): Unit = {
+  def runActors(p: Parameter, initial_actor: Actor, schedule: List[(ActorId,ActorId,Message)]): Unit = {
     require(validParam(p))
   
     val net = makeNetwork(p)
@@ -63,21 +63,8 @@ object Networking {
       }
     } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
     
-    
-    def initializationLoop(initSchedule: List[ActorId]): Unit = {
-      require(networkInvariant(net.param, net.states, net.messages, net.getActor))
-
-      initSchedule match {
-        case Nil() => ()
-        case Cons(x,xs) => 
-          if (validId(net, x) && validGetActor(net, x)) {
-            net.getActor(x).init()(net)
-            initializationLoop(xs)
-          }
-      }
-    } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor)) 
   
-    initializationLoop(actorIds)
+    initial_actor.init()(net)
     loop(schedule)
   
   } 
