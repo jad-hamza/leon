@@ -5,7 +5,6 @@ package leon.regression.synthesis
 import leon.test._
 
 import leon._
-import leon.purescala.Definitions._
 import leon.synthesis._
 
 import java.io.File
@@ -20,7 +19,7 @@ class SynthesisRegressionSuite extends LeonRegressionSuite {
   }
 
   private def testSynthesis(cat: String, f: File, bound: Int) {
-    val ctx = createLeonContext("--synthesis")
+    val ctx = createLeonContext("--synthesis", "--solvers=smt-z3")
 
     val pipeline = leon.frontends.scalac.ExtractionPhase andThen new leon.utils.PreprocessingPhase
 

@@ -2,27 +2,16 @@
 
 package leon.purescala
 
-import leon.purescala
-import leon.solvers.{ Model, SolverFactory }
+import Constructors._
+import Expressions._
+import Types._
+import Common._
+import Definitions._
+import leon.evaluators._
 import leon.LeonContext
-import leon.evaluators
 import leon.utils.StreamUtils
-import leon.purescala.Quantification._
-import leon.utils.DebugSectionEvaluation
-import purescala.Definitions.Program
-import purescala.Expressions._
-import purescala.Types.StringType
-import purescala.Constructors._
-import purescala.ExprOps._
-import purescala.Expressions._
-import purescala.Expressions.{Choose }
-import purescala.Extractors._
-import purescala.TypeOps._
-import purescala.Types._
-import purescala.Common._
-import purescala.Definitions._
+
 import scala.collection.mutable.ListBuffer
-import leon.evaluators.DefaultEvaluator
 
 object SelfPrettyPrinter {
   def prettyPrintersForType(inputType: TypeTree)(implicit ctx: LeonContext, program: Program): Stream[Lambda] = {
@@ -64,21 +53,19 @@ trait PrettyPrinterFinder[T, U >: T] {
   def buildLambda(inputType: TypeTree, fd: FunDef, slu: Stream[List[U]]): Stream[T]
   
   def prettyPrinterFromCandidate(fd: FunDef, inputType: TypeTree)(implicit ctx: LeonContext, program: Program): Stream[T] = {
-    TypeOps.canBeSubtypeOf(inputType, fd.tparams.map(_.tp), fd.params.head.getType) match {
+    TypeOps.subtypingInstantiation(inputType, fd.params.head.getType) match {
       case Some(genericTypeMap) =>
         //println("Found a mapping")
-        val defGenericTypeMap = genericTypeMap.map{ case (k, v) => (Definitions.TypeParameterDef(k), v) }
         def gatherPrettyPrinters(funIds: List[Identifier], acc: ListBuffer[Stream[U]] = ListBuffer[Stream[U]]()): Option[Stream[List[U]]] = funIds match {
           case Nil => Some(StreamUtils.cartesianProduct(acc.toList))
           case funId::tail => // For each function, find an expression which could be provided if it exists.
             getPrintersForType(funId.getType) match {
               case Some(u) => gatherPrettyPrinters(tail, acc += u)
               case None    =>
-                println("could not finish")
                 None
             }
         }
-        val funIds = fd.params.tail.map(x => TypeOps.instantiateType(x.id, defGenericTypeMap)).toList
+        val funIds = fd.params.tail.map(x => TypeOps.instantiateType(x.id, genericTypeMap)).toList
         gatherPrettyPrinters(funIds) match {
           case Some(l) => buildLambda(inputType, fd, l)
           case None =>    Stream.empty
@@ -187,7 +174,7 @@ class SelfPrettyPrinter extends PrettyPrinterFinder[Lambda, Lambda] { top =>
               orElse
           }
         } catch {
-          case e: evaluators.ContextualEvaluator#EvalError =>
+          case e: ContextualEvaluator#EvalError =>
             ctx.reporter.debug("Error "  + e.msg)
             orElse
         }
