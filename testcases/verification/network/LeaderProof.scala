@@ -23,8 +23,8 @@ object ProtocolProof {
   
   
   def validParam(p: Parameter) = {
-    val Params(n, starter) = p
-    0 <= starter && starter < n
+    val Params(n, starterProcess, ssns) = p
+    0 <= starterProcess && starterProcess < n
   }
   
   def validGetActor(net: VerifiedNetwork, id: ActorId) = {
@@ -34,7 +34,7 @@ object ProtocolProof {
     )
     
     val UID(uid) = id
-    val Params(n,_) = net.param
+    val Params(n,_,_) = net.param
     
     elimForAll(n, getActorDefined(net.getActor), uid) && 
     net.getActor.contains(id)
@@ -44,7 +44,7 @@ object ProtocolProof {
   def validId(net: VerifiedNetwork, id: ActorId) = {
     require(networkInvariant(net.param, net.states, net.messages, net.getActor))
     val UID(uid) = id
-    val Params(n, _) = net.param
+    val Params(n, _,_) = net.param
     0 <= uid && uid < n
   }
   
@@ -55,7 +55,7 @@ object ProtocolProof {
   
   
   def getActorDefined(getActor: MMap[ActorId,Actor])(i: BigInt) = {
-    getActor.contains(UID(i)) && getActor(UID(i)) == Process(UID(i))
+    getActor.contains(UID(i)) && getActor(UID(i)).myId == UID(i)
   }
    
   
@@ -596,7 +596,7 @@ object ProtocolProof {
 
   def makeNetwork(p: Parameter) = {
     require {
-      val Params(n, starterProcess) = p
+      val Params(n, starterProcess, ssns) = p
       validParam(p) &&
       init_statesDefined(n) && 
       init_getActorDefined(n) && 
@@ -625,7 +625,7 @@ object ProtocolProof {
    */
  
   def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
-    val Params(n, starterProcess) = param
+    val Params(n, starterProcess, ssns) = param
     validParam(param) && 
     intForAll(n, getActorDefined(getActor)) &&
     intForAll(n, statesDefined(states)) &&
@@ -639,7 +639,7 @@ object ProtocolProof {
   
   def makeNetworkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
     require {
-      val Params(n, starterProcess) = param
+      val Params(n, starterProcess, ssns) = param
       validParam(param) && 
       intForAll(n, getActorDefined(getActor)) &&
       intForAll(n, statesDefined(states)) &&
@@ -661,7 +661,7 @@ object ProtocolProof {
 //     true
     val sms = net.messages.getOrElse((sender, receiver), Nil())
     
-    val Params(n, starterProcess) = net.param
+    val Params(n, starterProcess, ssns) = net.param
         
     val UID(usender) = sender
     val UID(ureceiver) = receiver 
@@ -712,7 +712,7 @@ object ProtocolProof {
 
   def initPre(a: Actor)(implicit net: VerifiedNetwork) = {
     val UID(myuid) = a.myId
-    val Params(n, starterProcess) = net.param
+    val Params(n, starterProcess, ssns) = net.param
     val states = net.states
     
     networkInvariant(net.param, net.states, net.messages, net.getActor) &&
@@ -750,7 +750,7 @@ object ProtocolProof {
     
     val UID(myuid) = a.myId
     val UID(usender) = sender
-    val Params(n, starterProcess) = net.param
+    val Params(n, starterProcess, ssns) = net.param
     val states = net.states
     val messages = net.messages
   
