@@ -59,12 +59,11 @@ object Protocol {
     
       (sender, m, state) match {
         case (id, Election(uid), NonParticipant()) =>
-          if (uid > myuid) {
+          if (uid != myuid) {
+            val packet = if (uid > myuid) Election(uid) else Election(myuid)  
+            
             update (Participant())
-            !! (nextProcess, Election(uid))
-          } else if (uid < myuid) {
-            update (Participant())
-            !! (nextProcess, Election(myuid))
+            !! (nextProcess, packet)
           }
           else {
             // I cannot receive an Election message equal to my uid if I'm not a participant

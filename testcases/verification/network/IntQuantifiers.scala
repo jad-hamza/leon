@@ -1,6 +1,8 @@
 package distribution
 
 import leon.lang._
+import leon.proof._
+import leon.annotation._
 
 import scala.language.postfixOps
 
@@ -58,4 +60,37 @@ object IntQuantifiers {
     
   } ensuring(res => p(res))
   
+  
+  
+  def notExistsImpliesForAll(n: BigInt, p: BigInt => Boolean): Boolean = {
+    require(!intExists(n,p))
+    
+    if (n <= 0)
+      intForAll(n,(i: BigInt) => !p(i))
+    else 
+      notExistsImpliesForAll(n-1, p) && 
+      intForAll(n,(i: BigInt) => !p(i))
+  } holds
+  
+  
+  def notForAllImpliesExists(n: BigInt, p: BigInt => Boolean): Boolean = {
+    require(!intForAll(n,p))
+    
+    if (n <= 0) false
+    else if (!p(n-1))
+      intExists(n, (i: BigInt) => !p(i))
+    else 
+      notForAllImpliesExists(n-1,p) &&
+      intExists(n, (i: BigInt) => !p(i))
+  } holds
+  
+  def witnessImpliesExists(n: BigInt, p: BigInt => Boolean, i: BigInt): Boolean = {
+    require (0 <= i && i < n && p(i))
+  
+    if (i == n-1) 
+      intExists(n,p)
+    else
+      witnessImpliesExists(n-1, p, i) &&
+      intExists(n, p)
+  } holds
 }
