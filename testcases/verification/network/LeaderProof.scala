@@ -519,6 +519,39 @@ object ProtocolProof {
     noLeaderImpliesNoLeaderDuringElection_aux(n,n,states,messages)
   }
   
+  
+  def noElectionImpliesNoLeaderDuringElection_aux(
+    n: BigInt, u: BigInt,
+    states: MMap[ActorId,State],
+    messages: MMap[(ActorId,ActorId), List[Message]]
+  ): Boolean = {
+    require(
+      0 <= n && u <= n && 
+      intForAll(n, statesDefined(states)) &&
+      !existsMessage(n, messages, isElectionMessage)
+    )
+      
+    if (u <= 0 || n <= 0) 
+      intForAll(u, noLeaderDuringElection(n, states, messages))
+    else
+      noElectionImpliesNoLeaderDuringElection_aux(n, u-1, states, messages) && 
+      intForAll(u, noLeaderDuringElection(n, states, messages))
+  } holds
+  
+  def noElectionImpliesNoLeaderDuringElection(
+    n: BigInt,
+    states: MMap[ActorId,State],
+    messages: MMap[(ActorId,ActorId), List[Message]]
+  ): Boolean = {
+    require(
+      0 <= n &&
+      intForAll(n, statesDefined(states)) &&
+      !existsMessage(n, messages, isElectionMessage)
+    )
+    noElectionImpliesNoLeaderDuringElection_aux(n, n, states, messages)
+  } holds
+  
+  
   def electionImpliesNoLeader_aux(
       n: BigInt, u: BigInt, 
       states: MMap[ActorId,State], 
@@ -572,13 +605,15 @@ object ProtocolProof {
       init_emptyChannel(n) && 
       init_onlyOneChannel(n) && 
       init_noLeaderDuringElection(n) && 
+      init_noLeader(n) &&
       intForAll(n, statesDefined(init_states)) &&
       intForAll(n, getActorDefined(init_getActor)) &&
       intForAll2(n, n, ringChannels(n, init_messages)) &&
       intForAll(n, smallChannel(n, init_messages)) &&
       intForAll(n, emptyChannel(n, init_messages)) &&
       intForAll2(n, n, onlyOneChannel(n, init_messages)) &&
-      intForAll(n, noLeaderDuringElection(n, init_states, init_messages))
+      intForAll(n, noLeaderDuringElection(n, init_states, init_messages)) &&
+      intForAll(n, noLeader(n, init_states))
     }
     
     VerifiedNetwork(p, init_states, init_messages, init_getActor)
@@ -695,6 +730,12 @@ object ProtocolProof {
       elimForAll(n, emptyChannel(n, net.messages), myuid) &&
       emptyToSmallChannel(n, n, net.messages, myuid, increment(myuid,n), newChannel) &&
       emptyToOneChannel(n, n, n, net.messages, myuid, increment(myuid, n), newChannel) &&
+      intForAll(n, noLeader(n, states)) &&
+      stillNoLeader(n, states, myuid, Participant()) &&
+      intForAll(n, noLeader(n, states.updated(UID(myuid),Participant()))) &&
+      intForAll(n, noLeader(n, newStates)) &&
+      noLeaderImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
+      intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) &&
       networkInvariant(net.param, states.updated(a.myId, Participant()), newMessages, net.getActor) 
   //       update(Participant())
   //       !! (nextProcess, Election(myuid))
@@ -760,7 +801,7 @@ object ProtocolProof {
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel)  &&
-              intForAll(n, noLeader(n, net.states)) 
+              intForAll(n, noLeader(n, net.states)) &&
               noLeaderImpliesNoLeaderDuringElection(n, net.states, newMessages) &&
               intForAll(n, noLeaderDuringElection(n, net.states, newMessages)) &&
               networkInvariant(net.param, net.states, newMessages, net.getActor) 
@@ -776,12 +817,18 @@ object ProtocolProof {
               statesStillDefined(n, states, a.myId, KnowLeader(uid)) &&
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
-              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) 
-//               &&
-//               networkInvariant(net.param, states.updated(a.myId, KnowLeader(uid)), newMessages, net.getActor) 
-//               networkInvariant(net.param, states.updated(a.myId, KnowLeader(uid)), newMessages, net.getActor) 
-//               &&
-//               networkInvariant(net.param, newStates, newMessages, net.getActor)
+              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) &&
+              intForAll(n, emptyChannel(n, messages)) &&
+              nothingExists(n, messages, isElectionMessage) &&
+              !existsMessage(n, messages, isElectionMessage) &&
+              updateChannel(n, messages, newChannel, isElectionMessage, myuid, increment(myuid,n)) &&
+              !existsMessage(n, newMessages, isElectionMessage) &&
+              intForAll(n, statesDefined(states.updated(a.myId, KnowLeader(uid)))) && 
+              intForAll(n, statesDefined(newStates)) && 
+              noElectionImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
+              intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) &&
+              networkInvariant(net.param, newStates, newMessages, net.getActor) 
+              
             } else {
               true
               // discard smaller uid Election message
@@ -803,11 +850,17 @@ object ProtocolProof {
               statesStillDefined(n, states, a.myId, KnowLeader(uid)) &&
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel)  &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
-              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) 
-//               &&
-//               networkInvariant(net.param, states.updated(a.myId, KnowLeader(uid)), newMessages, net.getActor)
-//               &&
-//               networkInvariant(net.param, newStates, newMessages, net.getActor)
+              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) &&
+              intForAll(n, emptyChannel(n, messages)) &&
+              nothingExists(n, messages, isElectionMessage) &&
+              !existsMessage(n, messages, isElectionMessage) &&
+              updateChannel(n, messages, newChannel, isElectionMessage, myuid, increment(myuid,n)) &&
+              !existsMessage(n, newMessages, isElectionMessage) &&
+              intForAll(n, statesDefined(states.updated(a.myId, KnowLeader(uid)))) &&  
+              intForAll(n, statesDefined(newStates)) &&
+              noElectionImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
+              intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) &&
+              networkInvariant(net.param, newStates, newMessages, net.getActor) 
           }
           
           case (id, Elected(uid), KnowLeader(uid2)) => {
