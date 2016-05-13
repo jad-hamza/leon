@@ -475,6 +475,46 @@ object ProtocolProof {
   
   
   /**
+   * Invariant stating that when there is an Election(ssn) message in 
+   * the channel from i to increment(i,n), then ssn must the the maximum
+   * of all ssns of Actors from starterProcess to i included.
+   * We only look at the head of the channel because there is at most one 
+   * message in each channel.
+   */
+   
+   
+  def electingMax( 
+    n: BigInt, starterProcess: BigInt,
+    messages: MMap[(ActorId,ActorId),List[Message]],
+    getActor: MMap[ActorId,Actor]) = {
+    
+    require(n >= 0)
+    
+    (i: BigInt) => 
+      0 <= i && i < n && (
+      messages.getOrElse((UID(i), UID(increment(i,n))), Nil()) match {
+        case Cons(Election(ssn), xs) => 
+          ssn == collectMaxSSN(n, starterProcess, i, getActor)
+        case _ => true
+      })
+  } 
+  
+  def collectMaxSSN(n: BigInt, from: BigInt, to: BigInt, getActor: MMap[ActorId,Actor]): BigInt = {
+    require(
+      intForAll(n, getActorDefined(getActor)) &&
+      elimForAll(n, getActorDefined(getActor), from)
+    )
+    
+    val Process(uid,ssn) = getActor(UID(from))
+    
+    if (from == to) {
+      ssn
+    } else {
+      ssn + collectMaxSSN(n, increment(from,n), to, getActor)
+    }
+  }
+  
+  /**
    * Property stating that there is no leader (yet)
    */
   
