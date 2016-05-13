@@ -27,7 +27,7 @@ object Protocol {
   
   case class UID(uid: BigInt) extends ActorId
   
-  case class Params(n: BigInt, starterProcess: BigInt) extends Parameter
+  case class Params(n: BigInt, starterProcess: BigInt, ssns: BigInt => BigInt) extends Parameter
   
   
   def increment(i: BigInt, n: BigInt): BigInt = {
@@ -36,17 +36,17 @@ object Protocol {
     else BigInt(0)
   } ensuring(res => 0 <= res && res < n)
     
-  case class Process(myId: ActorId) extends Actor {
+  case class Process(myId: ActorId, ssn: BigInt) extends Actor {
     val UID(myuid) = myId
   
     def init()(implicit net: VerifiedNetwork) = {
       require(initPre(this))
-      val Params(n, starterProcess) = net.param
+      val Params(n, starterProcess, ssns) = net.param
     
       if (myuid == starterProcess) {
         val nextProcess = UID(increment(myuid, n))
         update(Participant())
-        !! (nextProcess, Election(myuid))
+        !! (nextProcess, Election(ssn))
       }
     } ensuring(_ => networkInvariant(net.param, net.states, net.messages, net.getActor))
     
@@ -54,48 +54,43 @@ object Protocol {
     def receive(sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
       require(receivePre(this, sender, m))
       
-      val Params(n, starterProcess) = net.param
+      val Params(n, starterProcess, ssns) = net.param
       val nextProcess = UID(increment(myuid, n))
     
       (sender, m, state) match {
-        case (id, Election(uid), NonParticipant()) =>
-          if (uid != myuid) {
-            val packet = if (uid > myuid) Election(uid) else Election(myuid)  
+        case (id, Election(ssn2), NonParticipant()) =>
+          if (ssn != ssn2) {
+            val packet = if (ssn > ssn2) Election(ssn) else Election(ssn2)  
             
             update (Participant())
             !! (nextProcess, packet)
           }
           else {
-            // I cannot receive an Election message equal to my uid if I'm not a participant
+            // I cannot receive an Election message equal to my ssn if I'm not a participant
 //             assert(false)
             ()
           }
           
-        case (id, Election(uid), Participant()) =>
-          if (uid > myuid) {
-            !! (nextProcess, Election(uid))
-          } else if (uid == myuid) {
-            update (KnowLeader(uid))
-            !! (nextProcess, Elected(myuid))
+        case (id, Election(ssn2), Participant()) =>
+          if (ssn2 > ssn) {
+            !! (nextProcess, Election(ssn2))
+          } else if (ssn == ssn2) {
+            update (KnowLeader(ssn))
+            !! (nextProcess, Elected(ssn))
             // I'm the leader!!
           } else {
-            // discard smaller uid Election message
+            // discard smaller ssn Election message
           }
+          
+        case (id, Elected(ssn2), Participant()) => {
+          update (KnowLeader(ssn2))
+          !! (nextProcess, Elected(ssn2))
+        }
           
         case (id, Elected(_), NonParticipant()) =>
           // I cannot receive an Elected message if I didn't even participate yet
 //           assert(false)
             ()
-          
-        case (id, Elected(uid), Participant()) => {
-          update (KnowLeader(uid))
-          !! (nextProcess, Elected(uid))
-        }
-        
-        case (id, Elected(uid), KnowLeader(uid2)) => {
-          ()
-//           assert(uid == uid2)
-        }
         
         case _ => {
 //           assert(false)

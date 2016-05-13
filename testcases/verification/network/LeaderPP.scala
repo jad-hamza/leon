@@ -70,7 +70,7 @@ object PrettyPrinting {
   
   def actorToString(a: Actor) = {
     a match {
-      case Process(id) => "Process(" + actorIdToString(id) + ")"
+      case Process(id, ssn) => "Process(" + actorIdToString(id) + ", " + ssn + ")"
     }
   }
   
@@ -92,10 +92,12 @@ object PrettyPrinting {
   }
   
   def networkToString(net: VerifiedNetwork): String = {
-    val VerifiedNetwork(Params(n, starterProcess), states, messages, getActor) = net
+    val VerifiedNetwork(p, states, messages, getActor) = net
+    val Params(n, starterProcess, ssns) = p
     
     "\n\nNumber of processes: " + n.toString + "\n" +
     "Starting Process: " + starterProcess + "\n\n" +
+//     "SSNS: ???\n\n" +
     statesToString(n, states) + "\n\n" + 
     messagesToString(n, messages) + "\n\n" + 
     getActorToString(n, getActor) + "\n"

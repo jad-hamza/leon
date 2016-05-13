@@ -23,8 +23,9 @@ object ProtocolProof {
   
   
   def validParam(p: Parameter) = {
-    val Params(n, starter) = p
-    0 <= starter && starter < n
+    val Params(n, starterProcess, ssns) = p
+    0 <= starterProcess && starterProcess < n &&
+    intForAll2(n, n, distinctSSN_fun(ssns))
   }
   
   def validGetActor(net: VerifiedNetwork, id: ActorId) = {
@@ -34,7 +35,7 @@ object ProtocolProof {
     )
     
     val UID(uid) = id
-    val Params(n,_) = net.param
+    val Params(n,_,_) = net.param
     
     elimForAll(n, getActorDefined(net.getActor), uid) && 
     net.getActor.contains(id)
@@ -44,7 +45,7 @@ object ProtocolProof {
   def validId(net: VerifiedNetwork, id: ActorId) = {
     require(networkInvariant(net.param, net.states, net.messages, net.getActor))
     val UID(uid) = id
-    val Params(n, _) = net.param
+    val Params(n, _,_) = net.param
     0 <= uid && uid < n
   }
   
@@ -55,14 +56,14 @@ object ProtocolProof {
   
   
   def getActorDefined(getActor: MMap[ActorId,Actor])(i: BigInt) = {
-    getActor.contains(UID(i)) && getActor(UID(i)) == Process(UID(i))
+    getActor.contains(UID(i)) && getActor(UID(i)).myId == UID(i)
   }
    
   
-  def init_getActorDefined(n: BigInt): Boolean = {
+  def init_getActorDefined(n: BigInt, ssns: BigInt => BigInt): Boolean = {
     
-    if (n <= 0) intForAll(n, getActorDefined(init_getActor))
-    else init_getActorDefined(n-1) && intForAll(n, getActorDefined(init_getActor))
+    if (n <= 0) intForAll(n, getActorDefined(init_getActor(ssns)))
+    else init_getActorDefined(n-1, ssns) && intForAll(n, getActorDefined(init_getActor(ssns)))
     
   } holds
   
@@ -379,7 +380,49 @@ object ProtocolProof {
 //         })))
 //   }
 //   
+  /**
+   * Invariant stating that ssn's are unique
+   */
+   
+  def distinctSSN(n: BigInt, getActor: MMap[ActorId,Actor]) = {
+    require(intForAll(n, getActorDefined(getActor)))
   
+    (i: BigInt, j: BigInt) => 
+      0 <= i && i < n && elimForAll(n, getActorDefined(getActor), i) &&
+      0 <= j && j < n && elimForAll(n, getActorDefined(getActor), j) && {
+        val Process(id1, ssn1) = getActor(UID(i))
+        val Process(id2, ssn2) = getActor(UID(j))
+        ssn1 != ssn2 || i == j
+      }
+  }
+
+  def distinctSSN_fun(ssns: BigInt => BigInt) = {
+    (i: BigInt, j: BigInt) => ssns(i) != ssns(j) || i == j
+  }
+
+
+  def init_distinctSSN_aux(n: BigInt, u: BigInt, v: BigInt, ssns: BigInt => BigInt): Boolean = {
+    require (u <= n && v <= n && intForAll2(n, n, distinctSSN_fun(ssns)))
+
+    if (u <= 0 || v <= 0 || n <= 0)
+      init_getActorDefined(n, ssns) &&
+      intForAll2(u, v, distinctSSN(n, init_getActor(ssns)))
+    else {
+      init_getActorDefined(n, ssns) &&
+      init_distinctSSN_aux(n, u-1, v, ssns) &&
+      init_distinctSSN_aux(n, u, v-1, ssns) &&
+      elimForAll2(n, n, distinctSSN_fun(ssns), u-1, v-1) &&
+      intForAll2(u, v, distinctSSN(n, init_getActor(ssns)))
+    }
+  } holds
+  
+
+  def init_distinctSSN(n: BigInt, ssns: BigInt => BigInt): Boolean = {
+    require(intForAll2(n, n, distinctSSN_fun(ssns)))
+
+    init_distinctSSN_aux(n, n, n, ssns)
+  } holds
+ 
   
   /**
    * Property (not invariant) stating that all channels are empty
@@ -430,6 +473,46 @@ object ProtocolProof {
     
   } holds
   
+  
+  /**
+   * Invariant stating that when there is an Election(ssn) message in 
+   * the channel from i to increment(i,n), then ssn must the the maximum
+   * of all ssns of Actors from starterProcess to i included.
+   * We only look at the head of the channel because there is at most one 
+   * message in each channel.
+   */
+   
+   
+  def electingMax( 
+    n: BigInt, starterProcess: BigInt,
+    messages: MMap[(ActorId,ActorId),List[Message]],
+    getActor: MMap[ActorId,Actor]) = {
+    
+    require(n >= 0)
+    
+    (i: BigInt) => 
+      0 <= i && i < n && (
+      messages.getOrElse((UID(i), UID(increment(i,n))), Nil()) match {
+        case Cons(Election(ssn), xs) => 
+          ssn == collectMaxSSN(n, starterProcess, i, getActor)
+        case _ => true
+      })
+  } 
+  
+  def collectMaxSSN(n: BigInt, from: BigInt, to: BigInt, getActor: MMap[ActorId,Actor]): BigInt = {
+    require(
+      intForAll(n, getActorDefined(getActor)) &&
+      elimForAll(n, getActorDefined(getActor), from)
+    )
+    
+    val Process(uid,ssn) = getActor(UID(from))
+    
+    if (from == to) {
+      ssn
+    } else {
+      ssn + collectMaxSSN(n, increment(from,n), to, getActor)
+    }
+  }
   
   /**
    * Property stating that there is no leader (yet)
@@ -519,6 +602,39 @@ object ProtocolProof {
     noLeaderImpliesNoLeaderDuringElection_aux(n,n,states,messages)
   }
   
+  
+  def noElectionImpliesNoLeaderDuringElection_aux(
+    n: BigInt, u: BigInt,
+    states: MMap[ActorId,State],
+    messages: MMap[(ActorId,ActorId), List[Message]]
+  ): Boolean = {
+    require(
+      0 <= n && u <= n && 
+      intForAll(n, statesDefined(states)) &&
+      !existsMessage(n, messages, isElectionMessage)
+    )
+      
+    if (u <= 0 || n <= 0) 
+      intForAll(u, noLeaderDuringElection(n, states, messages))
+    else
+      noElectionImpliesNoLeaderDuringElection_aux(n, u-1, states, messages) && 
+      intForAll(u, noLeaderDuringElection(n, states, messages))
+  } holds
+  
+  def noElectionImpliesNoLeaderDuringElection(
+    n: BigInt,
+    states: MMap[ActorId,State],
+    messages: MMap[(ActorId,ActorId), List[Message]]
+  ): Boolean = {
+    require(
+      0 <= n &&
+      intForAll(n, statesDefined(states)) &&
+      !existsMessage(n, messages, isElectionMessage)
+    )
+    noElectionImpliesNoLeaderDuringElection_aux(n, n, states, messages)
+  } holds
+  
+  
   def electionImpliesNoLeader_aux(
       n: BigInt, u: BigInt, 
       states: MMap[ActorId,State], 
@@ -553,35 +669,51 @@ object ProtocolProof {
    */
   
   def init_states_fun(id: ActorId): Option[State] = Some(NonParticipant())
-  def init_getActor_fun(id: ActorId): Option[Actor] = Some(Process(id))
+  def init_getActor_fun(ssns: BigInt => BigInt) = {
+    require(true)
+  
+    (id: ActorId) => {
+      val UID(uid) = id
+      Some(Process(id, ssns(uid))): Option[Actor]
+    }
+  }
   def init_messages_fun(ids: (ActorId,ActorId)): Option[List[Message]] = None()
   
   val init_states = MMap(init_states_fun)
-  val init_getActor = MMap(init_getActor_fun)
   val init_messages = MMap(init_messages_fun)
+  def init_getActor(ssns: BigInt => BigInt) = {
+    require(true)
+  
+    MMap(init_getActor_fun(ssns))
+  }
   
 
   def makeNetwork(p: Parameter) = {
     require {
-      val Params(n, starterProcess) = p
+      val Params(n, starterProcess, ssns) = p
       validParam(p) &&
       init_statesDefined(n) && 
-      init_getActorDefined(n) && 
+      init_getActorDefined(n, ssns) && 
       init_ringChannels(n) && 
       init_smallChannel(n) && 
       init_emptyChannel(n) && 
       init_onlyOneChannel(n) && 
       init_noLeaderDuringElection(n) && 
+      init_noLeader(n) &&
+      init_distinctSSN(n, ssns) &&
       intForAll(n, statesDefined(init_states)) &&
-      intForAll(n, getActorDefined(init_getActor)) &&
+      intForAll(n, getActorDefined(init_getActor(ssns))) &&
       intForAll2(n, n, ringChannels(n, init_messages)) &&
       intForAll(n, smallChannel(n, init_messages)) &&
       intForAll(n, emptyChannel(n, init_messages)) &&
       intForAll2(n, n, onlyOneChannel(n, init_messages)) &&
-      intForAll(n, noLeaderDuringElection(n, init_states, init_messages))
+      intForAll(n, noLeaderDuringElection(n, init_states, init_messages)) &&
+      intForAll(n, noLeader(n, init_states)) &&
+      intForAll2(n, n, distinctSSN(n, init_getActor(ssns)))
     }
     
-    VerifiedNetwork(p, init_states, init_messages, init_getActor)
+    val Params(n, starterProcess, ssns) = p
+    VerifiedNetwork(p, init_states, init_messages, init_getActor(ssns))
   } ensuring(res => networkInvariant(res.param, res.states, res.messages, res.getActor))
   
   
@@ -590,32 +722,34 @@ object ProtocolProof {
    */
  
   def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
-    val Params(n, starterProcess) = param
+    val Params(n, starterProcess, ssns) = param
     validParam(param) && 
     intForAll(n, getActorDefined(getActor)) &&
     intForAll(n, statesDefined(states)) &&
     intForAll2(n, n, ringChannels(n, messages)) &&
     intForAll(n, smallChannel(n, messages)) &&
     intForAll2(n, n, onlyOneChannel(n, messages)) &&
-    intForAll(n, noLeaderDuringElection(n, states, messages))
+    intForAll(n, noLeaderDuringElection(n, states, messages)) &&
+    intForAll2(n, n, distinctSSN(n, getActor))
 //     intForAll2(n, n, onlyOneLeader(n, states)) &&
 //     intForAll2(n, n, everyOneParticipated(n, states, messages))
   }
   
-  def makeNetworkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
-    require {
-      val Params(n, starterProcess) = param
-      validParam(param) && 
-      intForAll(n, getActorDefined(getActor)) &&
-      intForAll(n, statesDefined(states)) &&
-      intForAll2(n, n, ringChannels(n, messages)) &&
-      intForAll(n, smallChannel(n, messages)) &&
-      intForAll2(n, n, onlyOneChannel(n, messages)) &&
-      intForAll(n, noLeaderDuringElection(n, states, messages))
-    }
-    
-    networkInvariant(param, states, messages, getActor)
-  } holds
+//   def makeNetworkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
+//     require {
+//       val Params(n, starterProcess, ssns) = param
+//       validParam(param) && 
+//       intForAll(n, getActorDefined(getActor)) &&
+//       intForAll(n, statesDefined(states)) &&
+//       intForAll2(n, n, ringChannels(n, messages)) &&
+//       intForAll(n, smallChannel(n, messages)) &&
+//       intForAll2(n, n, onlyOneChannel(n, messages)) &&
+//       intForAll(n, noLeaderDuringElection(n, states, messages)) &&
+//       intForAll2(n, n, distinctSSN(n, init_getActor(ssns)))
+//     }
+//     
+//     networkInvariant(param, states, messages, getActor)
+//   } holds
     
   def peekMessageEnsuresReceivePre(net: VerifiedNetwork, sender: ActorId, receiver: ActorId, m: Message) = {
     require(
@@ -626,7 +760,7 @@ object ProtocolProof {
 //     true
     val sms = net.messages.getOrElse((sender, receiver), Nil())
     
-    val Params(n, starterProcess) = net.param
+    val Params(n, starterProcess, ssns) = net.param
         
     val UID(usender) = sender
     val UID(ureceiver) = receiver 
@@ -639,7 +773,7 @@ object ProtocolProof {
         intForAll2(n, n, ringChannels(n, net.messages)) &&
         elimForAll(n, getActorDefined(net.getActor), ureceiver) &&
         net.getActor.contains(receiver) && 
-        net.getActor(receiver) == Process(receiver) &&
+        net.getActor(receiver).myId == receiver &&
         elimForAll2(n, n, ringChannels(n, net.messages), usender, ureceiver) &&
         ureceiver == increment(usender, n) &&
         stillRingChannels(n, n, n, net.messages, usender, ureceiver, xs) &&
@@ -676,8 +810,8 @@ object ProtocolProof {
   
 
   def initPre(a: Actor)(implicit net: VerifiedNetwork) = {
-    val UID(myuid) = a.myId
-    val Params(n, starterProcess) = net.param
+    val Process(UID(myuid),ssn) = a
+    val Params(n, starterProcess, ssns) = net.param
     val states = net.states
     
     networkInvariant(net.param, net.states, net.messages, net.getActor) &&
@@ -686,7 +820,7 @@ object ProtocolProof {
       val nextProcess = UID(increment(myuid, n))
       val newStates = net.states.updated(a.myId, Participant())
       val channel = net.messages.getOrElse((a.myId, nextProcess), Nil())
-      val newChannel = channel :+ Election(myuid)
+      val newChannel = channel :+ Election(ssn)
       val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
       
       0 <= myuid && myuid < n &&
@@ -695,9 +829,15 @@ object ProtocolProof {
       elimForAll(n, emptyChannel(n, net.messages), myuid) &&
       emptyToSmallChannel(n, n, net.messages, myuid, increment(myuid,n), newChannel) &&
       emptyToOneChannel(n, n, n, net.messages, myuid, increment(myuid, n), newChannel) &&
+      intForAll(n, noLeader(n, states)) &&
+      stillNoLeader(n, states, myuid, Participant()) &&
+      intForAll(n, noLeader(n, states.updated(UID(myuid),Participant()))) &&
+      intForAll(n, noLeader(n, newStates)) &&
+      noLeaderImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
+      intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) &&
       networkInvariant(net.param, states.updated(a.myId, Participant()), newMessages, net.getActor) 
   //       update(Participant())
-  //       !! (nextProcess, Election(myuid))
+  //       !! (nextProcess, Election(ssn))
     }
     else {
       true
@@ -707,9 +847,9 @@ object ProtocolProof {
   def receivePre(a: Actor, sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
 
     
-    val UID(myuid) = a.myId
+    val Process(UID(myuid), ssn) = a
     val UID(usender) = sender
-    val Params(n, starterProcess) = net.param
+    val Params(n, starterProcess, ssns) = net.param
     val states = net.states
     val messages = net.messages
   
@@ -721,11 +861,11 @@ object ProtocolProof {
       elimForAll(n, statesDefined(states), myuid) &&
       elimForAll(n, emptyChannel(n, net.messages), myuid) &&
         ((sender, m, a.state) match {
-          case (id, Election(uid), NonParticipant()) =>
-            if (uid != myuid) {
+          case (id, Election(ssn2), NonParticipant()) =>
+            if (ssn2 != ssn) {
   //               update (Participant())
   //               !! (nextProcess, Election(uid))
-              val packet = if (uid > myuid) Election(uid) else Election(myuid)
+              val packet = if (ssn2 > ssn) Election(ssn2) else Election(ssn)
               val newStates = states.updated(a.myId, Participant())
               val channel = messages.getOrElse((a.myId, nextProcess), Nil())
               val newChannel = channel :+ packet
@@ -750,38 +890,44 @@ object ProtocolProof {
 //               false
             }
             
-          case (id, Election(uid), Participant()) =>
-            if (uid > myuid) {
+          case (id, Election(ssn2), Participant()) =>
+            if (ssn2 > ssn) {
 //               !! (nextProcess, Election(uid))
               val channel = net.messages.getOrElse((a.myId, nextProcess), Nil())
-              val newChannel = channel :+ Election(uid)
+              val newChannel = channel :+ Election(ssn2)
               val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
               
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel)  &&
-              intForAll(n, noLeader(n, net.states)) 
+              intForAll(n, noLeader(n, net.states)) &&
               noLeaderImpliesNoLeaderDuringElection(n, net.states, newMessages) &&
               intForAll(n, noLeaderDuringElection(n, net.states, newMessages)) &&
               networkInvariant(net.param, net.states, newMessages, net.getActor) 
               
-            } else if (uid == myuid) {
+            } else if (ssn2 == ssn) {
 //               update (KnowLeader(uid))
 //               !! (nextProcess, Elected(myuid))
-              val newStates = states.updated(a.myId, KnowLeader(uid))
+              val newStates = states.updated(a.myId, KnowLeader(ssn))
               val channel = messages.getOrElse((a.myId, nextProcess), Nil())
-              val newChannel = channel :+ Elected(myuid)
+              val newChannel = channel :+ Elected(ssn)
               val newMessages = messages.updated((a.myId, nextProcess), newChannel)
 
-              statesStillDefined(n, states, a.myId, KnowLeader(uid)) &&
+              statesStillDefined(n, states, a.myId, KnowLeader(ssn)) &&
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
-              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) 
-//               &&
-//               networkInvariant(net.param, states.updated(a.myId, KnowLeader(uid)), newMessages, net.getActor) 
-//               networkInvariant(net.param, states.updated(a.myId, KnowLeader(uid)), newMessages, net.getActor) 
-//               &&
-//               networkInvariant(net.param, newStates, newMessages, net.getActor)
+              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) &&
+              intForAll(n, emptyChannel(n, messages)) &&
+              nothingExists(n, messages, isElectionMessage) &&
+              !existsMessage(n, messages, isElectionMessage) &&
+              updateChannel(n, messages, newChannel, isElectionMessage, myuid, increment(myuid,n)) &&
+              !existsMessage(n, newMessages, isElectionMessage) &&
+              intForAll(n, statesDefined(states.updated(a.myId, KnowLeader(ssn)))) && 
+              intForAll(n, statesDefined(newStates)) && 
+              noElectionImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
+              intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) &&
+              networkInvariant(net.param, newStates, newMessages, net.getActor) 
+              
             } else {
               true
               // discard smaller uid Election message
@@ -792,22 +938,28 @@ object ProtocolProof {
             true
 //             false
             
-          case (id, Elected(uid), Participant()) => {
+          case (id, Elected(ssn2), Participant()) => {
 //               update (KnowLeader(uid))
 //               !! (nextProcess, Elected(uid))
-              val newStates = states.updated(a.myId, KnowLeader(uid))
+              val newStates = states.updated(a.myId, KnowLeader(ssn2))
               val channel = messages.getOrElse((a.myId, nextProcess), Nil())
-              val newChannel = channel :+ Elected(uid)
+              val newChannel = channel :+ Elected(ssn2)
               val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
               
-              statesStillDefined(n, states, a.myId, KnowLeader(uid)) &&
+              statesStillDefined(n, states, a.myId, KnowLeader(ssn2)) &&
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel)  &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
-              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) 
-//               &&
-//               networkInvariant(net.param, states.updated(a.myId, KnowLeader(uid)), newMessages, net.getActor)
-//               &&
-//               networkInvariant(net.param, newStates, newMessages, net.getActor)
+              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) &&
+              intForAll(n, emptyChannel(n, messages)) &&
+              nothingExists(n, messages, isElectionMessage) &&
+              !existsMessage(n, messages, isElectionMessage) &&
+              updateChannel(n, messages, newChannel, isElectionMessage, myuid, increment(myuid,n)) &&
+              !existsMessage(n, newMessages, isElectionMessage) &&
+              intForAll(n, statesDefined(states.updated(a.myId, KnowLeader(ssn2)))) &&  
+              intForAll(n, statesDefined(newStates)) &&
+              noElectionImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
+              intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) &&
+              networkInvariant(net.param, newStates, newMessages, net.getActor) 
           }
           
           case (id, Elected(uid), KnowLeader(uid2)) => {
