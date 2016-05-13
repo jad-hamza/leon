@@ -11,7 +11,7 @@ import FifoNetwork._
 
 
 object PrettyPrinting {
-  
+
   def stateToString(s: State) = {
     s match {
       case Participant() => "Participant"

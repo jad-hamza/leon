@@ -35,7 +35,13 @@ object Protocol {
     if (i < n-1) i+1
     else BigInt(0)
   } ensuring(res => 0 <= res && res < n)
-    
+
+  def decrement(i: BigInt, n: BigInt): BigInt = {
+    require(0 <= i && i < n)
+    if (i == 0) n-1
+    else i-1
+  } ensuring(res => 0 <= res && res < n)
+
   case class Process(myId: ActorId, ssn: BigInt) extends Actor {
     val UID(myuid) = myId
   

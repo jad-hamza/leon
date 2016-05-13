@@ -90,7 +90,7 @@ object Protocol {
     val a1 = CountingActor(actor1)
     val a2 = CheckingActor(actor2)
     
-    runActors(NoParam(), List(actor1, actor2), List(
+    runActors(NoParam(), a1, List(
       (actor1, actor1, Increment()),
       (actor1, actor1, Increment()),
       (actor1, actor1, Increment()),
