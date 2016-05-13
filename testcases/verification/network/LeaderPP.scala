@@ -92,11 +92,12 @@ object PrettyPrinting {
   }
   
   def networkToString(net: VerifiedNetwork): String = {
-    val VerifiedNetwork(Params(n, starterProcess, ssns), states, messages, getActor) = net
+    val VerifiedNetwork(p, states, messages, getActor) = net
+    val Params(n, starterProcess, ssns) = p
     
     "\n\nNumber of processes: " + n.toString + "\n" +
     "Starting Process: " + starterProcess + "\n\n" +
-    "SSNS: ???" + "\n\n" +
+//     "SSNS: ???\n\n" +
     statesToString(n, states) + "\n\n" + 
     messagesToString(n, messages) + "\n\n" + 
     getActorToString(n, getActor) + "\n"
