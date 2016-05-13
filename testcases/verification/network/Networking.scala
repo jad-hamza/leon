@@ -15,12 +15,6 @@ object Networking {
   abstract class Parameter
   
   
-//   def makeNetwork(param: Parameter, states: MMap[ActorId,State], getActor: MMap[ActorId,Actor]) = {
-//     require(networkInvariant(param, states, MMap(), getActor))
-//     
-//     VerifiedNetwork(param, states, MMap(), getActor)
-//   }
-  
   abstract class Actor {
     val myId: ActorId
     

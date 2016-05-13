@@ -24,7 +24,8 @@ object ProtocolProof {
   
   def validParam(p: Parameter) = {
     val Params(n, starterProcess, ssns) = p
-    0 <= starterProcess && starterProcess < n
+    0 <= starterProcess && starterProcess < n &&
+    intForAll2(n, n, distinctSSN_fun(ssns))
   }
   
   def validGetActor(net: VerifiedNetwork, id: ActorId) = {
@@ -382,6 +383,46 @@ object ProtocolProof {
   /**
    * Invariant stating that ssn's are unique
    */
+   
+  def distinctSSN(n: BigInt, getActor: MMap[ActorId,Actor]) = {
+    require(intForAll(n, getActorDefined(getActor)))
+  
+    (i: BigInt, j: BigInt) => 
+      0 <= i && i < n && elimForAll(n, getActorDefined(getActor), i) &&
+      0 <= j && j < n && elimForAll(n, getActorDefined(getActor), j) && {
+        val Process(id1, ssn1) = getActor(UID(i))
+        val Process(id2, ssn2) = getActor(UID(j))
+        ssn1 != ssn2 || i == j
+      }
+  }
+
+  def distinctSSN_fun(ssns: BigInt => BigInt) = {
+    (i: BigInt, j: BigInt) => ssns(i) != ssns(j) || i == j
+  }
+
+
+  def init_distinctSSN_aux(n: BigInt, u: BigInt, v: BigInt, ssns: BigInt => BigInt): Boolean = {
+    require (u <= n && v <= n && intForAll2(n, n, distinctSSN_fun(ssns)))
+
+    if (u <= 0 || v <= 0 || n <= 0)
+      init_getActorDefined(n, ssns) &&
+      intForAll2(u, v, distinctSSN(n, init_getActor(ssns)))
+    else {
+      init_getActorDefined(n, ssns) &&
+      init_distinctSSN_aux(n, u-1, v, ssns) &&
+      init_distinctSSN_aux(n, u, v-1, ssns) &&
+      elimForAll2(n, n, distinctSSN_fun(ssns), u-1, v-1) &&
+      intForAll2(u, v, distinctSSN(n, init_getActor(ssns)))
+    }
+  } holds
+  
+
+  def init_distinctSSN(n: BigInt, ssns: BigInt => BigInt): Boolean = {
+    require(intForAll2(n, n, distinctSSN_fun(ssns)))
+
+    init_distinctSSN_aux(n, n, n, ssns)
+  } holds
+ 
   
   /**
    * Property (not invariant) stating that all channels are empty
@@ -619,6 +660,7 @@ object ProtocolProof {
       init_onlyOneChannel(n) && 
       init_noLeaderDuringElection(n) && 
       init_noLeader(n) &&
+      init_distinctSSN(n, ssns) &&
       intForAll(n, statesDefined(init_states)) &&
       intForAll(n, getActorDefined(init_getActor(ssns))) &&
       intForAll2(n, n, ringChannels(n, init_messages)) &&
@@ -626,7 +668,8 @@ object ProtocolProof {
       intForAll(n, emptyChannel(n, init_messages)) &&
       intForAll2(n, n, onlyOneChannel(n, init_messages)) &&
       intForAll(n, noLeaderDuringElection(n, init_states, init_messages)) &&
-      intForAll(n, noLeader(n, init_states))
+      intForAll(n, noLeader(n, init_states)) &&
+      intForAll2(n, n, distinctSSN(n, init_getActor(ssns)))
     }
     
     val Params(n, starterProcess, ssns) = p
@@ -646,25 +689,27 @@ object ProtocolProof {
     intForAll2(n, n, ringChannels(n, messages)) &&
     intForAll(n, smallChannel(n, messages)) &&
     intForAll2(n, n, onlyOneChannel(n, messages)) &&
-    intForAll(n, noLeaderDuringElection(n, states, messages))
+    intForAll(n, noLeaderDuringElection(n, states, messages)) &&
+    intForAll2(n, n, distinctSSN(n, getActor))
 //     intForAll2(n, n, onlyOneLeader(n, states)) &&
 //     intForAll2(n, n, everyOneParticipated(n, states, messages))
   }
   
-  def makeNetworkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
-    require {
-      val Params(n, starterProcess, ssns) = param
-      validParam(param) && 
-      intForAll(n, getActorDefined(getActor)) &&
-      intForAll(n, statesDefined(states)) &&
-      intForAll2(n, n, ringChannels(n, messages)) &&
-      intForAll(n, smallChannel(n, messages)) &&
-      intForAll2(n, n, onlyOneChannel(n, messages)) &&
-      intForAll(n, noLeaderDuringElection(n, states, messages))
-    }
-    
-    networkInvariant(param, states, messages, getActor)
-  } holds
+//   def makeNetworkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
+//     require {
+//       val Params(n, starterProcess, ssns) = param
+//       validParam(param) && 
+//       intForAll(n, getActorDefined(getActor)) &&
+//       intForAll(n, statesDefined(states)) &&
+//       intForAll2(n, n, ringChannels(n, messages)) &&
+//       intForAll(n, smallChannel(n, messages)) &&
+//       intForAll2(n, n, onlyOneChannel(n, messages)) &&
+//       intForAll(n, noLeaderDuringElection(n, states, messages)) &&
+//       intForAll2(n, n, distinctSSN(n, init_getActor(ssns)))
+//     }
+//     
+//     networkInvariant(param, states, messages, getActor)
+//   } holds
     
   def peekMessageEnsuresReceivePre(net: VerifiedNetwork, sender: ActorId, receiver: ActorId, m: Message) = {
     require(
