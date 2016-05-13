@@ -24,7 +24,7 @@ object ProtocolProof {
   def areEqual[T](t1: T, t2: T) = t1 == t2
 
   def validParam(p: Parameter) = {
-    val Params(n, starterProcess, ssns) = p
+    val Params(n, starterProcess, ssns, round) = p
     0 <= starterProcess && starterProcess < n &&
     intForAll2(n, n, distinctSSN_fun(ssns))
   }
@@ -36,7 +36,7 @@ object ProtocolProof {
     )
     
     val UID(uid) = id
-    val Params(n,_,_) = net.param
+    val Params(n, starterProcess, ssns, round) = net.param
     
     elimForAll(n, getActorDefined(net.getActor), uid) && 
     net.getActor.contains(id)
@@ -46,7 +46,7 @@ object ProtocolProof {
   def validId(net: VerifiedNetwork, id: ActorId) = {
     require(networkInvariant(net.param, net.states, net.messages, net.getActor))
     val UID(uid) = id
-    val Params(n, _,_) = net.param
+    val Params(n, starterProcess, ssns, round) = net.param
     0 <= uid && uid < n
   }
   
@@ -779,8 +779,9 @@ object ProtocolProof {
 
   def makeNetwork(p: Parameter) = {
     require {
-      val Params(n, starterProcess, ssns) = p
+      val Params(n, starterProcess, ssns, round) = p
       validParam(p) &&
+      round == Round1() &&
       init_statesDefined(n) && 
       init_getActorDefined(n, ssns) && 
       init_ringChannels(n) && 
@@ -803,17 +804,81 @@ object ProtocolProof {
       intForAll(n, electingMax(n, starterProcess, init_messages, init_getActor(ssns)))
     }
     
-    val Params(n, starterProcess, ssns) = p
+    val Params(n, starterProcess, ssns, round) = p
     VerifiedNetwork(p, init_states, init_messages, init_getActor(ssns))
   } ensuring(res => networkInvariant(res.param, res.states, res.messages, res.getActor))
 
+  
+  /**
+   * About Round 1
+   */
 
+  def nonParticipantImpliesRound1(net: VerifiedNetwork, i: BigInt) = {
+    require {
+      val Params(n, starterProcess, ssns, round) = net.param
+      networkInvariant(net.param, net.states, net.messages, net.getActor) &&
+      0 <= i && i < n &&
+      elimForAll(n, statesDefined(net.states), i) && 
+      net.states(UID(i)) == NonParticipant()
+    }
+    
+    
+    val Params(n, starterProcess, ssns, round) = net.param
+    round match {
+      case Round1() => true
+      case Round2() => 
+        intForAll(n, isParticipant(n, net.states)) && 
+        elimForAll(n, isParticipant(n, net.states), i) &&
+        false
+      case Round3() =>  
+        intForAll(n, isParticipantOrKL(n, net.states)) && 
+        elimForAll(n, isParticipantOrKL(n, net.states), i) &&
+        false
+      case Finished() =>
+        intForAll(n, isKnowLeader(n, net.states)) && 
+        elimForAll(n, isKnowLeader(n, net.states), i) &&
+        false
+    }
+    
+    
+  } holds
+   
+  /**
+   * Invariant in Round2
+   */
+   
+  def isParticipant(n: BigInt, states: MMap[ActorId, State]) = {
+    require(intForAll(n, statesDefined(states)))
+    
+    (i: BigInt) => states(UID(i)) == Participant()
+  }
+
+  /**
+   * Invariant in Round3
+   */
+   
+  def isParticipantOrKL(n: BigInt, states: MMap[ActorId, State]) = {
+    require(intForAll(n, statesDefined(states)))
+    
+    (i: BigInt) => states(UID(i)) == Participant() || isKnowLeaderState(states(UID(i)))
+  }
+
+  /**
+   * Invariant in Finished 
+   */
+   
+  def isKnowLeader(n: BigInt, states: MMap[ActorId, State]) = {
+    require(intForAll(n, statesDefined(states)))
+    
+    (i: BigInt) => isKnowLeaderState(states(UID(i)))
+  }
+  
   /**
    * Network Invariant for the class VerifiedNetwork
    */
  
   def networkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
-    val Params(n, starterProcess, ssns) = param
+    val Params(n, starterProcess, ssns, round) = param
     validParam(param) && 
     intForAll(n, getActorDefined(getActor)) &&
     intForAll(n, statesDefined(states)) &&
@@ -821,15 +886,26 @@ object ProtocolProof {
     intForAll(n, smallChannel(n, messages)) &&
     intForAll2(n, n, onlyOneChannel(n, messages)) &&
     intForAll(n, noLeaderDuringElection(n, states, messages)) &&
-    intForAll2(n, n, distinctSSN(n, getActor)) &&
-    intForAll(n, electingMax(n, starterProcess, messages, getActor))
+    intForAll2(n, n, distinctSSN(n, getActor)) && (
+      round match {
+        case Round1() => 
+          intForAll(n, electingMax(n, starterProcess, messages, getActor))
+        case Round2() => 
+          intForAll(n, isParticipant(n, states))
+        case Round3() => 
+          intForAll(n, isParticipantOrKL(n, states))
+        case Finished() => 
+          intForAll(n, emptyChannel(n, messages)) &&
+          intForAll(n, isKnowLeader(n, states))
+      }
+    )
 //     intForAll2(n, n, onlyOneLeader(n, states)) &&
 //     intForAll2(n, n, everyOneParticipated(n, states, messages))
   }
   
 //   def makeNetworkInvariant(param: Parameter, states: MMap[ActorId, State], messages: MMap[(ActorId,ActorId),List[Message]], getActor: MMap[ActorId,Actor]) = {
 //     require {
-//       val Params(n, starterProcess, ssns) = param
+//       val Params(n, starterProcess, ssns, round) = param
 //       validParam(param) && 
 //       intForAll(n, getActorDefined(getActor)) &&
 //       intForAll(n, statesDefined(states)) &&
@@ -852,7 +928,7 @@ object ProtocolProof {
 //     true
     val sms = net.messages.getOrElse((sender, receiver), Nil())
     
-    val Params(n, starterProcess, ssns) = net.param
+    val Params(n, starterProcess, ssns, round) = net.param
         
     val UID(usender) = sender
     val UID(ureceiver) = receiver 
@@ -893,10 +969,15 @@ object ProtocolProof {
             witnessImpliesExists(n, hasMessage(n, net.messages, isElectionMessage), usender) &&
             existsMessage(n, net.messages, isElectionMessage) &&
             electionImpliesNoLeader(n, net.states, net.messages) &&
-            intForAll(n, noLeader(n, net.states)) &&
-            elimForAll(n, electingMax(n, starterProcess, net.messages, net.getActor), usender) && 
-            ssn2 == collectMaxSSN(n, starterProcess, usender, net.getActor) &&
-            areEqual (ssn2, collectMaxSSN(n, starterProcess, usender, net.getActor))
+            intForAll(n, noLeader(n, net.states)) && (
+              round match {
+                case Round1() => 
+                  elimForAll(n, electingMax(n, starterProcess, net.messages, net.getActor), usender) && 
+                  ssn2 == collectMaxSSN(n, starterProcess, usender, net.getActor) &&
+                  areEqual (ssn2, collectMaxSSN(n, starterProcess, usender, net.getActor))
+                case _ => true
+              }
+            )
             
           case _ => true
         })
@@ -909,7 +990,7 @@ object ProtocolProof {
 
   def initPre(a: Actor)(implicit net: VerifiedNetwork) = {
     val Process(UID(myuid),ssn) = a
-    val Params(n, starterProcess, ssns) = net.param
+    val Params(n, starterProcess, ssns, round) = net.param
     val states = net.states
     
     networkInvariant(net.param, net.states, net.messages, net.getActor) &&
@@ -946,7 +1027,7 @@ object ProtocolProof {
 
     
     val Process(UID(myuid), ssn) = a
-    val Params(n, starterProcess, ssns) = net.param
+    val Params(n, starterProcess, ssns, round) = net.param
     val states = net.states
     val messages = net.messages
     val getActor = net.getActor
@@ -982,9 +1063,11 @@ object ProtocolProof {
               noLeaderImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
               intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) &&
               0 <= usender && usender < n &&
+              nonParticipantImpliesRound1(net, myuid) &&
+              round == Round1() &&
+              areEqual(ssn2, collectMaxSSN(n, starterProcess, usender, net.getActor)) &&
               ssn2 == collectMaxSSN(n, starterProcess, usender, net.getActor) &&
-              areEqual(ssn2, collectMaxSSN(n, starterProcess, usender, net.getActor))
-//              stillMax(n, starterProcess, usender, net.getActor)
+              stillMax(n, starterProcess, usender, net.getActor)
 //               &&
 //               networkInvariant(net.param, states.updated(a.myId, Participant()), newMessages, net.getActor) 
 

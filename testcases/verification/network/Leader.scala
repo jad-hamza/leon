@@ -27,7 +27,24 @@ object Protocol {
   
   case class UID(uid: BigInt) extends ActorId
   
-  case class Params(n: BigInt, starterProcess: BigInt, ssns: BigInt => BigInt) extends Parameter
+  abstract class Round
+  
+  // initial part of the algorithm where the highest SSN is collected
+  case class Round1() extends Round
+  
+  // second part of the algorithm where Election(highestSSN) goes from the 
+  // the starterProcess to the Actor with highestSSN (possibly 0 steps)
+  case class Round2() extends Round
+  
+  // third part of the algorithm where Elected(highestSSN) goes around 
+  case class Round3() extends Round
+  
+  // algorithm finished 
+  case class Finished() extends Round
+  
+  case class Params(n: BigInt, starterProcess: BigInt, ssns: BigInt => BigInt, round: Round) extends Parameter
+  
+  
   
   
   def increment(i: BigInt, n: BigInt): BigInt = {
@@ -47,7 +64,7 @@ object Protocol {
   
     def init()(implicit net: VerifiedNetwork) = {
       require(initPre(this))
-      val Params(n, starterProcess, ssns) = net.param
+      val Params(n, starterProcess, ssns, round) = net.param
     
       if (myuid == starterProcess) {
         val nextProcess = UID(increment(myuid, n))
@@ -60,7 +77,7 @@ object Protocol {
     def receive(sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
       require(receivePre(this, sender, m))
       
-      val Params(n, starterProcess, ssns) = net.param
+      val Params(n, starterProcess, ssns, round) = net.param
       val nextProcess = UID(increment(myuid, n))
     
       (sender, m, state) match {
