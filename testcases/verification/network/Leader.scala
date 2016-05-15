@@ -34,7 +34,7 @@ object Protocol {
   
     def init()(implicit net: VerifiedNetwork) = {
       require(initPre(this))
-      val Params(n, starterProcess, ssns, round) = net.param
+      val Params(n, starterProcess, ssns) = net.param
     
       if (myuid == starterProcess) {
         val nextProcess = UID(increment(myuid, n))
@@ -47,7 +47,7 @@ object Protocol {
     def receive(sender: ActorId, m: Message)(implicit net: VerifiedNetwork) = {
       require(receivePre(this, sender, m))
       
-      val Params(n, starterProcess, ssns, round) = net.param
+      val Params(n, starterProcess, ssns) = net.param
       val nextProcess = UID(increment(myuid, n))
     
       (sender, m, state) match {
