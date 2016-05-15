@@ -27,37 +27,7 @@ object Protocol {
   
   case class UID(uid: BigInt) extends ActorId
   
-  abstract class Round
   
-  // initial part of the algorithm where the highest SSN is collected
-  case class Round1() extends Round
-  
-  // second part of the algorithm where Election(highestSSN) goes from the 
-  // the starterProcess to the Actor with highestSSN (possibly 0 steps)
-  case class Round2() extends Round
-  
-  // third part of the algorithm where Elected(highestSSN) goes around 
-  case class Round3() extends Round
-  
-  // algorithm finished 
-  case class Finished() extends Round
-  
-  case class Params(n: BigInt, starterProcess: BigInt, ssns: BigInt => BigInt, round: Round) extends Parameter
-  
-  
-  
-  
-  def increment(i: BigInt, n: BigInt): BigInt = {
-    require(0 <= i && i < n)
-    if (i < n-1) i+1
-    else BigInt(0)
-  } ensuring(res => 0 <= res && res < n)
-
-  def decrement(i: BigInt, n: BigInt): BigInt = {
-    require(0 <= i && i < n)
-    if (i == 0) n-1
-    else i-1
-  } ensuring(res => 0 <= res && res < n)
 
   case class Process(myId: ActorId, ssn: BigInt) extends Actor {
     val UID(myuid) = myId
