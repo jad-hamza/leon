@@ -925,10 +925,39 @@ object ProtocolProof {
        max(collectMaxSSN(n, starterProcess, usender, getActor), ssn2) == collectMaxSSN(n, starterProcess, increment(usender,n), getActor)
     }
   } holds
-  
-   
+
+
+  def stillElectingMax(
+                        n: BigInt, m: BigInt,
+                        starterProcess: BigInt,
+                        messages: MMap[(ActorId,ActorId), List[Message]],
+                        getActor: MMap[ActorId, Actor],
+                        myuid: BigInt,
+                        value: BigInt): Boolean = {
+    require(
+      intForAll(n, getActorDefined(getActor)) &&
+        intForAll(n, emptyChannel(n, messages)) &&
+        0 <= myuid && myuid < n &&
+        elimForAll(n, emptyChannel(n, messages), myuid) &&
+        m <= n &&
+        0 <= starterProcess && starterProcess < n && (
+        value == collectMaxSSN(n, starterProcess, decrement(starterProcess, n), getActor) ||
+          value == collectMaxSSN(n, starterProcess, myuid, getActor)
+        )
+    )
+
+
+    if (m <= 0)
+      intForAll(m, electingMax(n, starterProcess, messages.updated((UID(myuid), UID(increment(myuid, n))), List(Election(value))), getActor))
+    else
+      stillElectingMax(n, m - 1, starterProcess, messages, getActor, myuid, value) &&
+      elimForAll(n, emptyChannel(n, messages), m - 1) &&
+      intForAll(m, electingMax(n, starterProcess, messages.updated((UID(myuid), UID(increment(myuid, n))), List(Election(value))), getActor))
+  } holds
+
+
   /**
-   * Invariant in Round2
+   * Invariant about participant state
    */
    
   def isParticipant(n: BigInt, states: MMap[ActorId, State]) = {
@@ -1010,7 +1039,34 @@ object ProtocolProof {
       elimForAll(n, emptyChannel(n, messages), m-1) &&
       intForAll(m, electedMax(n, starterProcess, messages, getActor))
   } holds
-  
+
+  def noElectedImpliesElectedMax(
+                                  n: BigInt, m: BigInt,
+                                  starterProcess: BigInt,
+                                  messages: MMap[(ActorId,ActorId), List[Message]],
+                                  getActor: MMap[ActorId,Actor]
+                                ): Boolean = {
+    require(
+      m <= n &&
+      0 <= starterProcess && starterProcess < n &&
+      intForAll(n, getActorDefined(getActor)) &&
+      !existsMessage(n, messages, isElectedMessage))
+
+    if (m <= 0)
+      intForAll(m, electedMax(n, starterProcess, messages, getActor))
+    else
+      noElectedImpliesElectedMax(n,m-1, starterProcess, messages, getActor) && (
+      messages.getOrElse((UID(m-1),UID(increment(m-1,n))), Nil()) match {
+        case Cons(Elected(_),_) =>
+          witnessImpliesExists(n, hasMessage(n, messages, isElectedMessage), m-1) &&
+          false
+        case _ => true
+      }) &&
+      intForAll(m, electedMax(n, starterProcess, messages, getActor))
+
+
+  } holds
+
 
   /**
    * Invariant in Finished 
@@ -1242,6 +1298,11 @@ object ProtocolProof {
               val newChannel = channel :+ packet
               val newMessages = messages.updated((a.myId, nextProcess), newChannel)
 
+              channel.isEmpty && (
+              newChannel match {
+                case Cons(Election(value),Nil()) => true
+                case _ => false
+              }) &&
               statesStillDefined(n, states, a.myId, Participant())  &&
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
@@ -1271,8 +1332,15 @@ object ProtocolProof {
                 }
                 else false
               ) &&
-              intForAll(n, electingMax(n, starterProcess, newMessages, getActor))
-//               stillMax(n, starterProcess, usender, net.getActor) &&
+              stillElectingMax(n, n, starterProcess, messages, getActor, myuid, value) &&
+              intForAll(n, electingMax(n, starterProcess, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(value))), getActor)) &&
+              newMessages == messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(value))) &&
+              intForAll(n, electingMax(n, starterProcess, newMessages, getActor)) &&
+              updateChannel(n, messages, newChannel, isElectedMessage, myuid, increment(myuid,n)) &&
+              noElectedImpliesElectedMax(n, n, starterProcess, newMessages, getActor) &&
+              intForAll(n, electedMax(n, starterProcess, newMessages, getActor)) 
+
+              //               stillMax(n, starterProcess, usender, net.getActor) &&
 //               (max(collectMaxSSN(n, starterProcess, usender, getActor), ssn) == collectMaxSSN(n, starterProcess, increment(usender,n), getActor) &&
 //                value == collectMaxSSN(n, starterProcess, increment(usender,n), getActor)
 //                 || increment(usender,n) == starterProcess)
@@ -1389,10 +1457,17 @@ object ProtocolProof {
       0 <= i && i < n && 
       contains(messages.getOrElse((UID(i), UID(increment(i,n))), Nil()), p)
   }
-  
+
   def isElectionMessage(m: Message) = {
     m match {
       case Election(_) => true
+      case _ => false
+    }
+  }
+
+  def isElectedMessage(m: Message) = {
+    m match {
+      case Elected(_) => true
       case _ => false
     }
   }
@@ -1409,7 +1484,7 @@ object ProtocolProof {
     intExists(n, hasMessage(n, messages, p))
   }
 
-  
+
   def nothingExists(n: BigInt, messages: MMap[(ActorId,ActorId),List[Message]], p: Message => Boolean): Boolean = {
     require(n >= 0 && intForAll(n, emptyChannel(n, messages)))
     
