@@ -678,7 +678,7 @@ object ProtocolProof {
       intForAll2(n, n, distinctSSN(n, init_getActor(ssns))) &&
       intForAll(n, electingMax(n, starterProcess, init_messages, init_getActor(ssns))) &&
       intForAll(n, electedMax(n, starterProcess, init_messages, init_getActor(ssns))) &&
-      intForAll2(n, n, electionParticipants(n, starterProcess, init_states, init_messages))
+      intForAll(n, electionParticipants(n, starterProcess, init_states, init_messages))
     }
     
     val Params(n, starterProcess, ssns) = p
@@ -695,6 +695,12 @@ object ProtocolProof {
       (i > j && k <= j)
     )
   }
+
+  def incrementBetween(n: BigInt, i: BigInt, j: BigInt) = {
+    require(0 <= j && j < n && inBetween(n,i,j,increment(j,n)))
+
+    increment(j,n) == i
+  } holds
   
   def maxGreater(n: BigInt, i: BigInt, j: BigInt, k: BigInt, getActor: MMap[ActorId,Actor]): Boolean = {
     require(
@@ -876,6 +882,9 @@ object ProtocolProof {
       elimForAll(n, emptyChannel(n, messages), m-1) &&
       intForAll(m, electingMax(n, starterProcess, messages, getActor))
   } holds
+
+
+  def max(i: BigInt, j: BigInt) = if (i > j) i else j
   
   def collectMaxSSN(n: BigInt, from: BigInt, to: BigInt, getActor: MMap[ActorId,Actor]): BigInt = {
     require(
@@ -894,7 +903,6 @@ object ProtocolProof {
     }
   }
 
-  def max(i: BigInt, j: BigInt) = if (i > j) i else j
  
   def incrDecr(u: BigInt, n: BigInt) = {
     require (0 <= u && u < n)
@@ -924,6 +932,33 @@ object ProtocolProof {
     else {
        max(collectMaxSSN(n, starterProcess, usender, getActor), ssn2) == collectMaxSSN(n, starterProcess, increment(usender,n), getActor)
     }
+  } holds
+
+  def noElectionImpliesElectingMax(
+                                  n: BigInt, m: BigInt,
+                                  starterProcess: BigInt,
+                                  messages: MMap[(ActorId,ActorId), List[Message]],
+                                  getActor: MMap[ActorId,Actor]
+                                ): Boolean = {
+    require(
+      m <= n &&
+        0 <= starterProcess && starterProcess < n &&
+        intForAll(n, getActorDefined(getActor)) &&
+        !existsMessage(n, messages, isElectionMessage))
+
+    if (m <= 0)
+      intForAll(m, electingMax(n, starterProcess, messages, getActor))
+    else
+      noElectionImpliesElectingMax(n,m-1, starterProcess, messages, getActor) && (
+        messages.getOrElse((UID(m-1),UID(increment(m-1,n))), Nil()) match {
+          case Cons(Election(_),_) =>
+            witnessImpliesExists(n, hasMessage(n, messages, isElectionMessage), m-1) &&
+              false
+          case _ => true
+        }) &&
+        intForAll(m, electingMax(n, starterProcess, messages, getActor))
+
+
   } holds
 
 
@@ -967,6 +1002,77 @@ object ProtocolProof {
       0 <= i && i < n && elimForAll(n, statesDefined(states), i) &&
       states(UID(i)) == Participant()
   }
+
+  def stillParticipating(
+                          n: BigInt,
+                          starterProcess: BigInt,
+                          usender: BigInt,
+                          myuid: BigInt,
+                          states: MMap[ActorId,State]
+                        ): Boolean = {
+    require(
+      0 <= starterProcess && starterProcess < n &&
+      0 <= usender && usender < n &&
+      0 <= myuid && myuid < n &&
+      intForAll(n, statesDefined(states)) &&
+      forAllModulo(n, starterProcess, usender, isParticipant(n,states))
+    )
+
+    if (starterProcess == usender)
+      elimForAllModulo(n, starterProcess, usender, isParticipant(n, states), usender) &&
+      statesStillDefined(n, states, UID(myuid), Participant()) &&
+      forAllModulo(n, starterProcess, usender, isParticipant(n, states.updated(UID(myuid), Participant())))
+    else
+      stillParticipating(n, starterProcess, decrement(usender,n), myuid, states) &&
+      elimForAllModulo(n, starterProcess, usender, isParticipant(n, states), usender) &&
+      isParticipant(n, states)(usender) &&
+      statesStillDefined(n, states, UID(myuid), Participant()) &&
+      forAllModulo(n, starterProcess, usender, isParticipant(n, states.updated(UID(myuid), Participant())))
+  } holds
+
+  def f(
+                          n: BigInt,
+                          starterProcess: BigInt,
+                          usender: BigInt,
+                          myuid: BigInt,
+                          states: MMap[ActorId,State]
+                        ): Boolean = {
+    require(
+      0 <= starterProcess && starterProcess < n &&
+        0 <= usender && usender < n &&
+        0 <= myuid && myuid < n &&
+        intForAll(n, statesDefined(states)) &&
+        forAllModulo(n, starterProcess, usender, isParticipant(n, states)) &&
+        elimForAllModulo(n, starterProcess, usender, isParticipant(n, states), usender) &&
+        statesStillDefined(n, states, UID(myuid), Participant())
+    )
+
+    stillParticipating(n, starterProcess, usender, myuid, states)
+  } holds
+
+  def oneMoreParticipant(
+                          n: BigInt,
+                          starterProcess: BigInt,
+                          usender: BigInt,
+                          states: MMap[ActorId,State]
+                        ): Boolean = {
+    require(
+      0 <= starterProcess && starterProcess < n &&
+      0 <= usender && usender < n &&
+      intForAll(n, statesDefined(states)) &&
+//      elimForAll(n, statesDefined(states), increment(usender,n)) &&
+      isParticipant(n, states)(increment(usender,n)) &&
+      forAllModulo(n, starterProcess, usender, isParticipant(n, states))
+    )
+
+    forAllModulo(n, starterProcess, increment(usender,n), isParticipant(n, states))
+
+  } holds
+
+
+  /**
+    * Invariant stating that an Elected message always contains the maximal SSN
+    */
   
   def electedMax( 
     n: BigInt, 
@@ -1068,6 +1174,48 @@ object ProtocolProof {
   } holds
 
 
+
+  def stillElectedMax(
+                        n: BigInt, m: BigInt,
+                        starterProcess: BigInt,
+                        messages: MMap[(ActorId,ActorId), List[Message]],
+                        getActor: MMap[ActorId, Actor],
+                        myuid: BigInt,
+                        value: BigInt): Boolean = {
+    require(
+      intForAll(n, getActorDefined(getActor)) &&
+        intForAll(n, emptyChannel(n, messages)) &&
+        0 <= myuid && myuid < n &&
+        elimForAll(n, emptyChannel(n, messages), myuid) &&
+        m <= n &&
+        0 <= starterProcess && starterProcess < n &&
+        value == collectMaxSSN(n, starterProcess, decrement(starterProcess, n), getActor)
+    )
+
+
+    if (m <= 0)
+      intForAll(m, electedMax(n, starterProcess, messages.updated((UID(myuid), UID(increment(myuid, n))), List(Elected(value))), getActor))
+    else
+      stillElectedMax(n, m - 1, starterProcess, messages, getActor, myuid, value) &&
+      elimForAll(n, emptyChannel(n, messages), m - 1) &&
+      intForAll(m, electedMax(n, starterProcess, messages.updated((UID(myuid), UID(increment(myuid, n))), List(Elected(value))), getActor))
+  } holds
+
+  /**
+    *
+    */
+
+  def substitute(n: BigInt, starterProcess: BigInt, usender: BigInt, states1: MMap[ActorId,State], states2: MMap[ActorId,State]) = {
+    require(
+      0 <= starterProcess && starterProcess < n &&
+      0 <= usender && usender < n &&
+      intForAll(n, statesDefined(states2)) &&
+      forAllModulo(n, starterProcess, usender, isParticipant(n, states2)) && states1 == states2)
+
+
+    forAllModulo(n, starterProcess, usender, isParticipant(n, states1))
+  } holds
+
   /**
    * Invariant in Finished 
    */
@@ -1093,14 +1241,9 @@ object ProtocolProof {
       messages: MMap[(ActorId,ActorId), List[Message]]) = {
     require(intForAll(n, statesDefined(states)))
 
-    (i: BigInt, j: BigInt) => {
-      messages.getOrElse((UID(j),UID(increment(j,n))), Nil()) match {
-        case Cons(Election(_),_) =>
-            inBetween(n,starterProcess,j,i) ==> {
-              0 <= i && i < n &&
-              elimForAll(n, statesDefined(states), i) &&
-              states(UID(i)) == Participant()
-            }
+    (i: BigInt) => {
+      messages.getOrElse((UID(i),UID(increment(i,n))), Nil()) match {
+        case Cons(Election(_),_) => forAllModulo(n, starterProcess, i, isParticipant(n, states))
         case _ => true
       }
     }
@@ -1114,12 +1257,12 @@ object ProtocolProof {
 
     init_statesDefined(n) &&
     init_emptyChannel(n) &&
-    emptyChannelsImplyElectionParticipants(n, n, n, starterProcess, init_states, init_messages)
+    emptyChannelsImplyElectionParticipants(n, n, starterProcess, init_states, init_messages)
   } holds
 
   def emptyChannelsImplyElectionParticipants(
                                               n: BigInt,
-                                              u: BigInt, v: BigInt,
+                                              u: BigInt,
                                               starterProcess: BigInt,
                                               states: MMap[ActorId,State],
                                               messages: MMap[(ActorId,ActorId), List[Message]]): Boolean = {
@@ -1127,16 +1270,95 @@ object ProtocolProof {
       intForAll(n, statesDefined(states)) &&
       intForAll(n, emptyChannel(n, messages)) &&
       0 <= starterProcess && starterProcess < n &&
-      u <= n && v <= n
+      u <= n
     )
 
-    if (u <= 0 || v <= 0)
-      intForAll2(u, v, electionParticipants(n, starterProcess, states, messages))
+    if (u <= 0)
+      intForAll(u, electionParticipants(n, starterProcess, states, messages))
     else
-      emptyChannelsImplyElectionParticipants(n, u-1, v, starterProcess, states, messages) &&
-      emptyChannelsImplyElectionParticipants(n, u, v-1, starterProcess, states, messages) &&
-      elimForAll(n, emptyChannel(n, messages), v-1) &&
-      intForAll2(u, v, electionParticipants(n, starterProcess, states, messages))
+      emptyChannelsImplyElectionParticipants(n, u-1, starterProcess, states, messages) &&
+      elimForAll(n, emptyChannel(n, messages), u-1) &&
+      intForAll(u, electionParticipants(n, starterProcess, states, messages))
+  } holds
+
+
+  def stillElectionParticipants(
+                                n: BigInt,
+                                m: BigInt,
+                                starterProcess: BigInt,
+                                myuid: BigInt,
+                                states: MMap[ActorId, State],
+                                messages: MMap[(ActorId,ActorId), List[Message]],
+                                tt: List[Message]
+                               ): Boolean = {
+    require(
+      m <= n &&
+      0 <= starterProcess && starterProcess < n &&
+      0 <= myuid && myuid < n &&
+      intForAll(n, statesDefined(states)) &&
+      intForAll(n, emptyChannel(n, messages)) &&
+      forAllModulo(n, starterProcess, myuid, isParticipant(n, states))
+    )
+
+    if (m <= 0)
+      intForAll(m, electionParticipants(n, starterProcess, states, messages.updated((UID(myuid), UID(increment(myuid,n))), tt)))
+    else
+      stillElectionParticipants(n,m-1,starterProcess,myuid,states,messages,tt) &&
+      elimForAll(n, emptyChannel(n, messages), m-1) &&
+      intForAll(m, electionParticipants(n, starterProcess, states, messages.updated((UID(myuid), UID(increment(myuid,n))), tt)))
+  } holds
+
+
+  def electionParticipantsLemma(
+                                n: BigInt,
+                                starterProcess: BigInt,
+                                usender: BigInt,
+                                myuid: BigInt,
+                                states: MMap[ActorId,State],
+                                messages: MMap[(ActorId,ActorId), List[Message]],
+                                newChannel: List[Message]): Boolean = {
+    require(
+      0 <= starterProcess && starterProcess < n &&
+      0 <= usender && usender < n &&
+      0 <= myuid && myuid < n &&
+      myuid == increment(usender,n) &&
+      intForAll(n, statesDefined(states)) &&
+      intForAll(n, emptyChannel(n, messages)) &&
+      forAllModulo(n, starterProcess, usender, isParticipant(n, states))
+    )
+    stillParticipating(n, starterProcess, usender, myuid, states) &&
+    forAllModulo(n, starterProcess, usender, isParticipant(n, states.updated(UID(myuid), Participant()))) &&
+    oneMoreParticipant(n, starterProcess, usender, states.updated(UID(myuid), Participant())) &&
+    forAllModulo(n, starterProcess, increment(usender,n), isParticipant(n, states.updated(UID(myuid), Participant()))) &&
+    stillElectionParticipants(n, n, starterProcess, myuid, states.updated(UID(myuid), Participant()), messages, newChannel) &&
+    intForAll(n, electionParticipants(n, starterProcess, states.updated(UID(myuid), Participant()), messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel)))
+
+  } holds
+
+
+
+  def noElectionImpliesElectionParticipants(
+                                            n: BigInt, m: BigInt,
+                                            starterProcess: BigInt,
+                                            states: MMap[ActorId,State],
+                                            messages: MMap[(ActorId,ActorId),List[Message]]
+                                           ): Boolean = {
+
+    require(
+      0 <= starterProcess && starterProcess < n &&
+      m <= n &&
+      intForAll(n, statesDefined(states)) &&
+      !existsMessage(n, messages, isElectionMessage)
+    )
+    if (m <= 0)
+      intForAll(m, electionParticipants(n, starterProcess, states, messages))
+    else
+      noElectionImpliesElectionParticipants(n, m-1, starterProcess, states, messages) && (
+      messages.getOrElse((UID(m-1), UID(increment(m-1,n))), Nil()) match {
+        case Cons(Election(_),_) => witnessImpliesExists(n, hasMessage(n, messages, isElectionMessage), m-1) && false
+        case _ => true
+      }) &&
+      intForAll(m, electionParticipants(n, starterProcess, states, messages))
   } holds
 
   /**
@@ -1155,7 +1377,7 @@ object ProtocolProof {
     intForAll2(n, n, distinctSSN(n, getActor)) &&
     intForAll(n, electingMax(n, starterProcess, messages, getActor)) &&
     intForAll(n, electedMax(n, starterProcess, messages, getActor)) &&
-    intForAll2(n, n, electionParticipants(n, starterProcess, states, messages))
+    intForAll(n, electionParticipants(n, starterProcess, states, messages))
   }
     
   def peekMessageEnsuresReceivePre(net: VerifiedNetwork, sender: ActorId, receiver: ActorId, m: Message) = {
@@ -1195,7 +1417,7 @@ object ProtocolProof {
         stillnoLeaderDuringElection(n, n, net.states, messages, usender, ureceiver, xs) &&
         emptyChannelsImplyElectingMax(n, n, starterProcess, messages2, net.getActor)  &&
         emptyChannelsImplyElectedMax(n, n, starterProcess, messages2, net.getActor) &&
-        emptyChannelsImplyElectionParticipants(n, n, n, starterProcess, states, messages2) &&
+        emptyChannelsImplyElectionParticipants(n, n, starterProcess, states, messages2) &&
         intForAll(n, emptyChannel(n, messages2)) &&
         intForAll(n, statesDefined(net.states)) &&
         intForAll(n, getActorDefined(net.getActor)) &&
@@ -1206,7 +1428,7 @@ object ProtocolProof {
         intForAll(n, noLeaderDuringElection(n, net.states, messages2)) &&
         intForAll(n, electingMax(n, starterProcess, messages2, net.getActor)) &&
         intForAll(n, electedMax(n, starterProcess, messages2, net.getActor)) &&
-        intForAll2(n, n, electionParticipants(n, starterProcess, states, messages2)) &&
+        intForAll(n, electionParticipants(n, starterProcess, states, messages2)) &&
         networkInvariant(net.param, net.states, messages2, net.getActor) &&
         (m match {
           case Election(ssn2) =>
@@ -1218,7 +1440,9 @@ object ProtocolProof {
             elimForAll(n, electingMax(n, starterProcess, messages, net.getActor), usender) && (
               ssn2 == collectMaxSSN(n, starterProcess, usender, net.getActor) ||
               ssn2 == collectMaxSSN(n, starterProcess, decrement(starterProcess, n), net.getActor)
-            )
+            ) &&
+            elimForAll(n, electionParticipants(n, starterProcess, states, messages), usender) &&
+            forAllModulo(n, starterProcess, usender, isParticipant(n, states))
 
           case Elected(ssn2) =>
             elimForAll(n, electedMax(n, starterProcess, messages, net.getActor), usender) &&
@@ -1279,9 +1503,9 @@ object ProtocolProof {
     val getActor = net.getActor
     val UID(usender) = sender
   
-    networkInvariant(net.param, net.states, net.messages, net.getActor)  &&
+    networkInvariant(net.param, net.states, net.messages, getActor)  &&
     intForAll(n, emptyChannel(n, net.messages)) &&
-    0 <= myuid && myuid < n &&  {
+    0 <= myuid && myuid < n && myuid == increment(usender,n) && {
       val nextProcess = UID(increment(myuid, n))
       intForAll(n, statesDefined(states)) &&
       elimForAll(n, statesDefined(states), myuid) &&
@@ -1298,24 +1522,20 @@ object ProtocolProof {
               val newChannel = channel :+ packet
               val newMessages = messages.updated((a.myId, nextProcess), newChannel)
 
-              channel.isEmpty && (
-              newChannel match {
-                case Cons(Election(value),Nil()) => true
-                case _ => false
-              }) &&
+              electionParticipantsLemma(n, starterProcess, usender, myuid, states, messages, newChannel) &&
+              intForAll(n, electionParticipants(n, starterProcess, states.updated(UID(myuid), Participant()), messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel))) &&
               statesStillDefined(n, states, a.myId, Participant())  &&
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) &&
-              intForAll(n, noLeader(n, states)) &&
-              stillNoLeader(n, states, myuid, Participant()) &&
-              intForAll(n, noLeader(n, states.updated(UID(myuid),Participant()))) &&
+              stillNoLeader(n, states, myuid, Participant())  &&
+              intForAll(n, noLeader(n, states.updated(UID(myuid), Participant()))) &&
               intForAll(n, noLeader(n, newStates)) &&
               noLeaderImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
-              intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) &&
-              0 <= usender && usender < n && (
-                if (ssn2 == collectMaxSSN(n, starterProcess, usender, net.getActor)) {
-                  stillMax(n, starterProcess, usender, net.getActor) && (
+              intForAll(n, noLeaderDuringElection(n, newStates, newMessages))
+              (
+                if (ssn2 == collectMaxSSN(n, starterProcess, usender, getActor)) {
+                  stillMax(n, starterProcess, usender, getActor) && (
                     (
                       max(collectMaxSSN(n, starterProcess, usender, getActor), ssn) == collectMaxSSN(n, starterProcess, increment(usender,n), getActor) &&
                       value == collectMaxSSN(n, starterProcess, increment(usender,n), getActor)
@@ -1326,9 +1546,9 @@ object ProtocolProof {
                       value == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), getActor)
                     )
                   )
-                } else if (ssn2 == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), net.getActor)) {
+                } else if (ssn2 == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), getActor)) {
                   maxGreater(n, starterProcess, decrement(starterProcess,n), myuid, getActor) &&
-                  value == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), net.getActor)
+                  value == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), getActor)
                 }
                 else false
               ) &&
@@ -1338,22 +1558,14 @@ object ProtocolProof {
               intForAll(n, electingMax(n, starterProcess, newMessages, getActor)) &&
               updateChannel(n, messages, newChannel, isElectedMessage, myuid, increment(myuid,n)) &&
               noElectedImpliesElectedMax(n, n, starterProcess, newMessages, getActor) &&
-              intForAll(n, electedMax(n, starterProcess, newMessages, getActor)) 
-
-              //               stillMax(n, starterProcess, usender, net.getActor) &&
-//               (max(collectMaxSSN(n, starterProcess, usender, getActor), ssn) == collectMaxSSN(n, starterProcess, increment(usender,n), getActor) &&
-//                value == collectMaxSSN(n, starterProcess, increment(usender,n), getActor)
-//                 || increment(usender,n) == starterProcess)
-              
-//               &&
-//               value == collectMaxSSN(n, starterProcess, myuid, getActor)
-//               &&
-//               networkInvariant(net.param, states.updated(a.myId, Participant()), newMessages, net.getActor) 
+              intForAll(n, electedMax(n, starterProcess, newMessages, getActor))  &&
+              networkInvariant(net.param, newStates, newMessages, getActor)
 
             }
             else {
+              true
               // I cannot receive an Election message equal to my uid if I'm not a participant
-                true
+//              forAllModulo(n, starterProcess, usender, isParticipant(n, states))
 //               false
             }
             
@@ -1363,40 +1575,110 @@ object ProtocolProof {
               val channel = net.messages.getOrElse((a.myId, nextProcess), Nil())
               val newChannel = channel :+ Election(ssn2)
               val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
-              
+
+              electionParticipantsLemma(n, starterProcess, usender, myuid, states, messages, newChannel) &&
+              intForAll(n, electionParticipants(n, starterProcess, states.updated(UID(myuid), Participant()), messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel))) &&
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel)  &&
               intForAll(n, noLeader(n, net.states)) &&
               noLeaderImpliesNoLeaderDuringElection(n, net.states, newMessages) &&
-              intForAll(n, noLeaderDuringElection(n, net.states, newMessages)) 
-//               &&
-//               networkInvariant(net.param, net.states, newMessages, net.getActor) 
-              
+              intForAll(n, noLeaderDuringElection(n, net.states, newMessages)) &&
+              updateChannel(n, messages, newChannel, isElectedMessage, myuid, increment(myuid,n)) &&
+              noElectedImpliesElectedMax(n, n, starterProcess, newMessages, getActor) &&
+              intForAll(n, electedMax(n, starterProcess, newMessages, getActor)) &&
+              (
+                if (ssn2 == collectMaxSSN(n, starterProcess, usender, getActor)) {
+                  stillMax(n, starterProcess, usender, getActor) && (
+                    (
+                      max(collectMaxSSN(n, starterProcess, usender, getActor), ssn) == collectMaxSSN(n, starterProcess, increment(usender,n), getActor) &&
+                        ssn2 == collectMaxSSN(n, starterProcess, increment(usender,n), getActor)
+                      ) || (
+                        increment(usender,n) == starterProcess &&
+                        ssn2 == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), getActor)
+                      )
+                    )
+                } else if (ssn2 == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), getActor)) {
+                  true
+                }
+                else false
+              ) &&
+              stillElectingMax(n, n, starterProcess, messages, getActor, myuid, ssn2) &&
+              intForAll(n, electingMax(n, starterProcess, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))), getActor)) &&
+//              newMessages == messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))) &&
+              intForAll(n, getActorDefined(getActor)) &&
+              intForAll(n, statesDefined(states)) &&
+              intForAll2(n, n, ringChannels(n, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2)))))
+              intForAll(n, smallChannel(n, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))))) &&
+              intForAll2(n, n, onlyOneChannel(n, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))))) &&
+              intForAll(n, noLeaderDuringElection(n, states, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))))) &&
+              intForAll2(n, n, distinctSSN(n, getActor)) &&
+              intForAll(n, electingMax(n, starterProcess, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))), getActor)) &&
+              intForAll(n, electedMax(n, starterProcess, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))), getActor)) &&
+              intForAll(n, electionParticipants(n, starterProcess, states, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))))) &&
+              networkInvariant(net.param, net.states, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))), getActor)
+              //               &&
+
             } else if (ssn2 == ssn) {
 //               update (KnowLeader(uid))
 //               !! (nextProcess, Elected(myuid))
-              val newStates = states.updated(a.myId, KnowLeader(ssn))
-              val channel = messages.getOrElse((a.myId, nextProcess), Nil())
-              val newChannel = channel :+ Elected(ssn)
-              val newMessages = messages.updated((a.myId, nextProcess), newChannel)
+//              val channel = messages.getOrElse((UID(myuid), nextProcess), Nil())
+//              val newChannel = channel :+ Elected(ssn)
+              val newChannel: List[Message] = Cons(Elected(ssn2),Nil())
 
-              statesStillDefined(n, states, a.myId, KnowLeader(ssn)) &&
-              stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
-              emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
-              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) &&
               intForAll(n, emptyChannel(n, messages)) &&
+//              emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) &&
+//              emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
               nothingExists(n, messages, isElectionMessage) &&
               !existsMessage(n, messages, isElectionMessage) &&
               updateChannel(n, messages, newChannel, isElectionMessage, myuid, increment(myuid,n)) &&
-              !existsMessage(n, newMessages, isElectionMessage) &&
-              intForAll(n, statesDefined(states.updated(a.myId, KnowLeader(ssn)))) && 
-              intForAll(n, statesDefined(newStates)) && 
-              noElectionImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
-              intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) 
-//               &&
-//               networkInvariant(net.param, newStates, newMessages, net.getActor) 
-              
+              !existsMessage(n, messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel), isElectionMessage) &&
+              noElectionImpliesElectionParticipants(n, n, starterProcess, states.updated(UID(myuid), KnowLeader(ssn)), messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel)) &&
+              noElectionImpliesElectingMax(n, n, starterProcess, messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel), getActor) &&
+              noElectionImpliesNoLeaderDuringElection(n, states.updated(UID(myuid), KnowLeader(ssn)), messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel)) &&
+              intForAll(n, noLeaderDuringElection(n, states.updated(UID(myuid), KnowLeader(ssn)), messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel))) &&
+              intForAll(n, statesDefined(states)) &&
+              statesStillDefined(n, states, UID(myuid), KnowLeader(ssn)) &&
+              intForAll(n, statesDefined(states.updated(UID(myuid), KnowLeader(ssn)))) &&
+              intForAll2(n, n, ringChannels(n, messages)) &&
+              stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel) &&
+              intForAll2(n, n, ringChannels(n, messages.updated((UID(myuid),UID(increment(myuid,n))),newChannel)))
+//              true
+//              (
+//                if (ssn2 == collectMaxSSN(n, starterProcess, usender, getActor)) {
+//                  val i = maxExists(n, starterProcess, usender, getActor)
+//                  elimForAll(n, getActorDefined(getActor), i) && {
+//                    val Process(_, ssn3) = getActor(UID(i))
+//                    ssn2 == ssn3 && ssn3 == ssn &&
+//                      elimForAll2(n, n, distinctSSN(n, getActor), i, myuid) &&
+//                      i == myuid && inBetween(n, starterProcess, usender, i) &&
+//                      i == increment(usender,n) &&
+//                      increment(usender,n) == starterProcess &&
+//                      usender == decrement(starterProcess,n) &&
+//                      ssn2 == collectMaxSSN(n, starterProcess, usender, getActor) &&
+//                      ssn2 == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), getActor)
+//                  }
+//                  //                  i == myuid
+//                } else if (ssn2 == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), getActor)) {
+//                  true
+//                }
+//                else false
+//                )
+//              ssn2 == collectMaxSSN(n, starterProcess, decrement(starterProcess,n), getActor) &&
+//                stillElectedMax(n, n, starterProcess, messages, getActor, myuid, ssn2) &&
+//                intForAll(n, electedMax(n, starterProcess, messages.updated((UID(myuid),UID(increment(myuid,n))),Cons(Elected(ssn2),Nil())), getActor)) &&
+
+//              networkInvariant(net.param, states.updated(UID(myuid), KnowLeader(ssn)), messages.updated((UID(myuid), UID(increment(myuid,n))), newChannel), getActor)
+              //              intForAll(n, getActorDefined(getActor)) &&
+              //              intForAll(n, statesDefined(states.updated(UID(myuid), KnowLeader(ssn)))) &&
+              //              intForAll(n, smallChannel(n, messages.updated((UID(myuid),UID(increment(myuid,n))),newChannel)))
+              //              intForAll2(n, n, onlyOneChannel(n, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))))) &&
+              //              intForAll(n, noLeaderDuringElection(n, states.updated(UID(myuid), KnowLeader(ssn)), messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2)))))
+              //              intForAll2(n, n, distinctSSN(n, getActor)) &&
+              //              intForAll(n, electingMax(n, starterProcess, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))), getActor)) &&
+              //              intForAll(n, electedMax(n, starterProcess, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))), getActor)) &&
+              //              intForAll(n, electionParticipants(n, starterProcess, states, messages.updated((UID(myuid),UID(increment(myuid,n))),List(Election(ssn2))))) &&
+
             } else {
               true
               // discard smaller uid Election message
@@ -1410,12 +1692,12 @@ object ProtocolProof {
           case (id, Elected(ssn2), Participant()) => {
 //               update (KnowLeader(uid))
 //               !! (nextProcess, Elected(uid))
-              val newStates = states.updated(a.myId, KnowLeader(ssn2))
-              val channel = messages.getOrElse((a.myId, nextProcess), Nil())
+              val newStates = states.updated(UID(myuid), KnowLeader(ssn2))
+              val channel = messages.getOrElse((UID(myuid), nextProcess), Nil())
               val newChannel = channel :+ Elected(ssn2)
-              val newMessages = net.messages.updated((a.myId, nextProcess), newChannel)
+              val newMessages = net.messages.updated((UID(myuid), nextProcess), newChannel)
               
-              statesStillDefined(n, states, a.myId, KnowLeader(ssn2)) &&
+              statesStillDefined(n, states, UID(myuid), KnowLeader(ssn2)) &&
               stillRingChannels(n, n, n, messages, myuid, increment(myuid,n), newChannel)  &&
               emptyToSmallChannel(n, n, messages, myuid, increment(myuid,n), newChannel) &&
               emptyToOneChannel(n, n, n, messages, myuid, increment(myuid, n), newChannel) &&
@@ -1424,12 +1706,12 @@ object ProtocolProof {
               !existsMessage(n, messages, isElectionMessage) &&
               updateChannel(n, messages, newChannel, isElectionMessage, myuid, increment(myuid,n)) &&
               !existsMessage(n, newMessages, isElectionMessage) &&
-              intForAll(n, statesDefined(states.updated(a.myId, KnowLeader(ssn2)))) &&  
+              intForAll(n, statesDefined(states.updated(UID(myuid), KnowLeader(ssn2)))) &&
               intForAll(n, statesDefined(newStates)) &&
               noElectionImpliesNoLeaderDuringElection(n, newStates, newMessages) &&
               intForAll(n, noLeaderDuringElection(n, newStates, newMessages)) 
 //               &&
-//               networkInvariant(net.param, newStates, newMessages, net.getActor) 
+//               networkInvariant(net.param, newStates, newMessages, getActor)
           }
           
           case (id, Elected(uid), KnowLeader(uid2)) => {

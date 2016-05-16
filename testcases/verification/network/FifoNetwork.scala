@@ -49,7 +49,7 @@ object FifoNetwork  {
           getActor(receiver).receive(sender,m)(this)
           check(networkInvariant(param, states, messages, getActor))
           true
-          
+
         case _ => 
           false
       }
