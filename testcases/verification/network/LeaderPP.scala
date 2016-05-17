@@ -26,9 +26,9 @@ object PrettyPrinting {
       case UID(uid) => "u" + uid
     }
   }
-  
+
   def statesToString(n: BigInt, m: MMap[ActorId,State]): String = {
-  
+
     def loop(i: BigInt) : String = {
       if (i == n) ""
       else  if (m.contains(UID(i)))
@@ -36,9 +36,11 @@ object PrettyPrinting {
       else
         actorIdToString(UID(i)) + " -> Nothing\n" + loop(i+1)
     }
-    
-    loop(0)
+
+    "\n"+loop(0)
   }
+
+  def noParamStatesToString(m: MMap[ActorId,State]): String = statesToString(5, m)
   
   def messageToString(m: Message) = {
     m match  {
@@ -65,8 +67,12 @@ object PrettyPrinting {
     }
     
     if (n >= 0)
-      loop(0)
+      "\n"+loop(0)
     else ""
+  }
+
+  def noParamMessagesToString(m: MMap[(ActorId,ActorId), List[Message]]): String = {
+    messagesToString(5, m)
   }
   
   def actorToString(a: Actor) = {
@@ -74,9 +80,9 @@ object PrettyPrinting {
       case Process(id, ssn) => "Process(" + actorIdToString(id) + ", " + ssn + ")"
     }
   }
-  
+
   def getActorToString(n: BigInt, getActor: MMap[ActorId,Actor]) = {
-    
+
     def loop(i: BigInt) : String = {
       require(0 <= i && i <= n)
       if (i == n) ""
@@ -86,10 +92,15 @@ object PrettyPrinting {
         "getActor(" + i + ") = Nothing\n" + loop(i+1)
       }
     }
-    
+
     if (n >= 0)
-      loop(0)
+      "\n"+loop(0)
     else ""
+  }
+
+  def noParamGetActorToString(getActor: MMap[ActorId,Actor]) = {
+
+    getActorToString(5,getActor)
   }
   
   def networkToString(net: VerifiedNetwork): String = {
