@@ -102,14 +102,25 @@ object PrettyPrinting {
 
     getActorToString(5,getActor)
   }
+
+  def ssnsToString(n: BigInt, ssns: BigInt => BigInt): String = {
+    def loop(i: BigInt): String = {
+      require(0 <= i && i <= n)
+      if (i == n) ""
+      else "ssns(" + i + ") = " + ssns(i) + "\n" + loop(i+1)
+    }
+    if (n >= 0) "\n"+loop(0)
+    else ""
+  }
   
   def networkToString(net: VerifiedNetwork): String = {
     val VerifiedNetwork(p, states, messages, getActor) = net
     val Params(n, starterProcess, ssns) = p
-    
+
+
     "\n\nNumber of processes: " + n.toString + "\n" +
     "Starting Process: " + starterProcess + "\n\n" +
-//     "SSNS: ???\n\n" +
+    ssnsToString(n, ssns) + "\n\n" +
     statesToString(n, states) + "\n\n" + 
     messagesToString(n, messages) + "\n\n" + 
     getActorToString(n, getActor) + "\n"
