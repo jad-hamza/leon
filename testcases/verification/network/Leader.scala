@@ -3,8 +3,8 @@ package distribution
 
 import FifoNetwork._
 import Networking._
-import IntQuantifiers._
 import ProtocolProof._
+import Quantifiers._
 
 import leon.lang._
 import leon.collection._

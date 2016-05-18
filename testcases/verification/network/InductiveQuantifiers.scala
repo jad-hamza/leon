@@ -8,7 +8,7 @@ import scala.language.postfixOps
 
 
 
-object IntQuantifiers {
+object Quantifiers {
 
   def intForAll(n: BigInt, p: BigInt => Boolean): Boolean = {    
 //     forall ((i: BigInt) => (0 <= i && i < n) ==> p(i))
@@ -93,12 +93,12 @@ object IntQuantifiers {
       witnessImpliesExists(n-1, p, i) &&
       intExists(n, p)
   } holds
-  
-  
-  
-  
-  
-  
+
+
+
+
+
+
   def increment(i: BigInt, n: BigInt): BigInt = {
     require(0 <= i && i < n)
     if (i < n-1) i+1
@@ -110,20 +110,20 @@ object IntQuantifiers {
     if (i == 0) n-1
     else i-1
   } ensuring(res => 0 <= res && res < n)
-  
-  
-  
+
+
+
   def forAllModulo(n: BigInt, i: BigInt, j: BigInt, p: BigInt => Boolean): Boolean = {
     require (0 <= i && i < n && 0 <= j && j < n)
-    
+
     if (i == j) p(j)
     else p(j) && forAllModulo(n, i, decrement(j,n), p)
   }
-  
+
   def elimForAllModulo(n: BigInt, i: BigInt, j: BigInt, p: BigInt => Boolean, k: BigInt): Boolean = {
     require (
-      0 <= i && i < n && 
-      0 <= j && j < n && 
+      0 <= i && i < n &&
+      0 <= j && j < n &&
       0 <= k && k < n && (
         (i <= k && k <= j) ||
         (j < i && k >= i) ||
@@ -131,9 +131,9 @@ object IntQuantifiers {
       ) &&
       forAllModulo(n, i, j, p)
     )
-    
+
     if (i == j) p(k)
-    else if (k == j) p(k) 
+    else if (k == j) p(k)
     else elimForAllModulo(n, i, decrement(j,n), p, k) && p(k)
   } holds
 }

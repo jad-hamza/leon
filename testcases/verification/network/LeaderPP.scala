@@ -8,7 +8,7 @@ import Protocol._
 import ProtocolProof._
 import Networking._
 import FifoNetwork._
-import IntQuantifiers._
+import Quantifiers._
 
 
 object PrettyPrinting {

@@ -39,7 +39,7 @@ object Networking {
   
   
   def runActors(p: Parameter, initial_actor: Actor, schedule: List[(ActorId,ActorId,Message)]): Unit = {
-    require(validParam(p))
+    require(runActorsPrecondition(p, initial_actor, schedule))
   
     val net = makeNetwork(p)
     
